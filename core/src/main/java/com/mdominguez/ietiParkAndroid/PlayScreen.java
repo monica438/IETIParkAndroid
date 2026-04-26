@@ -12,6 +12,7 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
@@ -118,7 +119,7 @@ public class PlayScreen extends ScreenAdapter {
         }
 
         applyNetworkState(delta);
-        updateStaticCamera();
+        updateCamera();
         viewport.apply();
         ScreenUtils.clear(levelData.backgroundColor);
         SpriteBatch batch = game.getBatch();
@@ -135,9 +136,9 @@ public class PlayScreen extends ScreenAdapter {
             spriteRuntimeStates.get(i).visible = false;
         }
         GameSession.WorldState world = GameSession.get().snapshotWorld();
-        applyWorldSprites(world);
 
         float dt = Math.max(0f, delta);
+        // 1) Pintamos los jugadores que el servidor dice que están en la sala.
         for (GameSession.PlayerState p : players) {
             if (p.cat < 1 || p.cat > PLAYER_SLOTS) continue;
             Integer slotIndexObj = playerSlotByCat.get(p.cat);
@@ -151,16 +152,45 @@ public class PlayScreen extends ScreenAdapter {
             String animName = (p.anim == null || p.anim.isEmpty() ? "idle" : p.anim) + "_cat" + p.cat;
             applyAnimation(slotIndex, animName, dt);
         }
+
+        // 2) Pintamos el mundo: árbol fijo y poción en el suelo o sobre su portador.
+        applyPotionAndTree(world, players);
     }
 
-    private void applyWorldSprites(GameSession.WorldState world) {
+    private void applyPotionAndTree(GameSession.WorldState world, List<GameSession.PlayerState> players) {
         for (int i = 0; i < levelData.sprites.size && i < spriteRuntimeStates.size; i++) {
             LevelData.LevelSprite sprite = levelData.sprites.get(i);
             String type = normalize(sprite.type + " " + sprite.name);
             LevelRenderer.SpriteRuntimeState state = spriteRuntimeStates.get(i);
-            if (type.contains("potion")) state.visible = !world.potionTaken;
-            if (type.contains("tree")) state.visible = !world.doorOpen;
+
+            // El árbol es la puerta visual: nunca desaparece.
+            if (type.contains("tree")) {
+                state.visible = true;
+            }
+
+            if (type.contains("potion")) {
+                GameSession.PlayerState carrier = findPotionCarrier(world, players);
+                if (carrier == null) {
+                    // Poción sin coger: se dibuja en su posición del nivel.
+                    state.visible = true;
+                    state.worldX = world.potionX;
+                    state.worldY = world.potionY;
+                } else {
+                    // Poción cogida: se dibuja encima del gato portador.
+                    state.visible = true;
+                    state.worldX = carrier.x;
+                    state.worldY = carrier.y - 18f;
+                }
+            }
         }
+    }
+
+    private GameSession.PlayerState findPotionCarrier(GameSession.WorldState world, List<GameSession.PlayerState> players) {
+        if (world == null || world.potionCarrierId == null || world.potionCarrierId.length() == 0) return null;
+        for (GameSession.PlayerState p : players) {
+            if (p != null && world.potionCarrierId.equals(p.id)) return p;
+        }
+        return null;
     }
 
     private void applyAnimation(int spriteIndex, String animationName, float dt) {
@@ -252,10 +282,8 @@ public class PlayScreen extends ScreenAdapter {
         batch.begin();
         font.getData().setScale(1.25f); font.setColor(HUD);
         font.draw(batch, "< MENU", backButton.x, backButton.y + backButton.height - 8);
-        font.draw(batch, GameSession.get().getMyNickname() + "  " + GameSession.get().getStatus(), 18, hudViewport.getWorldHeight() - 18);
-        List<GameSession.PlayerState> players = GameSession.get().snapshotPlayers();
-        float y = hudViewport.getWorldHeight() - 48;
-        for (GameSession.PlayerState p : players) { font.draw(batch, "cat" + p.cat + " " + p.nickname, 18, y); y -= 22; }
+        // HUD simplificado: solo mi nickname y el color asignado por el servidor.
+        font.draw(batch, GameSession.get().getMyNickname() + " (" + GameSession.get().getMyCatColor() + ")", 18, hudViewport.getWorldHeight() - 18);
         font.getData().setScale(1f); font.setColor(Color.WHITE);
         batch.end();
     }
@@ -286,10 +314,12 @@ public class PlayScreen extends ScreenAdapter {
         for (int cat = 1; cat <= PLAYER_SLOTS; cat++) {
             String animId = animationIdByName.get(normalize("idle_cat" + cat));
             String texture = "levels/media/idle_cat" + cat + ".png";
-            float w = 16, h = 16, ax = 0.5f, ay = 0.7f;
+            // Las animaciones run/jump usan spritesheets de 20x20/20x24.
+            // Dibujamos SIEMPRE el gato a 20x20 para que no parezca que encoge al correr.
+            float drawW = 20f, drawH = 20f, ax = 0.5f, ay = 0.7f;
             LevelData.AnimationClip clip = animId == null ? null : levelData.animationClips.get(animId);
-            if (clip != null) { texture = clip.texturePath; w = clip.frameWidth; h = clip.frameHeight; ax = clip.anchorX; ay = clip.anchorY; }
-            levelData.sprites.add(new LevelData.LevelSprite("player_cat" + cat, "player", 0f, -200, -200, w, h, ax, ay, false, false, 0, texture, animId));
+            if (clip != null) { texture = clip.texturePath; ax = clip.anchorX; ay = clip.anchorY; }
+            levelData.sprites.add(new LevelData.LevelSprite("player_cat" + cat, "player", 0f, -200, -200, drawW, drawH, ax, ay, false, false, 0, texture, animId));
             playerSlotByCat.put(cat, firstPlayerSpriteIndex + cat - 1);
         }
     }
@@ -313,21 +343,14 @@ public class PlayScreen extends ScreenAdapter {
     }
 
     private void applyInitialCamera() {
-        updateStaticCamera();
+        camera.setToOrtho(false);
+        camera.position.set(levelData.viewportX + levelData.viewportWidth / 2f, levelData.worldHeight - (levelData.viewportY + levelData.viewportHeight / 2f), 0);
+        camera.update();
     }
 
-    /**
-     * Camera fija: siempre muestra el viewport completo del nivel.
-     * No sigue al jugador porque en este juego se debe ver todo el mapa.
-     */
-    private void updateStaticCamera() {
-        camera.setToOrtho(false);
-        camera.position.set(
-            levelData.viewportX + levelData.viewportWidth / 2f,
-            levelData.worldHeight - (levelData.viewportY + levelData.viewportHeight / 2f),
-            0f
-        );
-        camera.update();
+    private void updateCamera() {
+        // Cámara fija: siempre se ve el nivel completo, no sigue al jugador.
+        applyInitialCamera();
     }
 
     private void updateTouchControlLayout() {

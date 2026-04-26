@@ -25,6 +25,7 @@ public final class GameSession {
         public boolean facingRight;
         public boolean grounded;
         public boolean viewer;
+        public boolean hasPotion;
 
         public PlayerState copy() {
             PlayerState p = new PlayerState();
@@ -39,6 +40,7 @@ public final class GameSession {
             p.facingRight = facingRight;
             p.grounded = grounded;
             p.viewer = viewer;
+            p.hasPotion = hasPotion;
             return p;
         }
     }
@@ -46,6 +48,7 @@ public final class GameSession {
     public static final class WorldState {
         public boolean potionTaken;
         public boolean doorOpen;
+        public String potionCarrierId = "";
         public float potionX = 157f;
         public float potionY = 160f;
         public float doorX = 262f;
@@ -74,6 +77,7 @@ public final class GameSession {
     public synchronized String getMyNickname() { return myNickname == null || myNickname.isEmpty() ? requestedNickname : myNickname; }
     public synchronized String getMyId() { return myId; }
     public synchronized int getMyCat() { return myCat; }
+    public synchronized String getMyCatColor() { return catColor(myCat); }
     public synchronized boolean isConnected() { return connected; }
     public synchronized String getStatus() { return status; }
 
@@ -133,6 +137,7 @@ public final class GameSession {
         if (ws == null) return;
         world.potionTaken = ws.potionTaken;
         world.doorOpen = ws.doorOpen;
+        world.potionCarrierId = ws.potionCarrierId == null ? "" : ws.potionCarrierId;
         world.potionX = ws.potionX;
         world.potionY = ws.potionY;
         world.doorX = ws.doorX;
@@ -153,6 +158,7 @@ public final class GameSession {
         WorldState w = new WorldState();
         w.potionTaken = world.potionTaken;
         w.doorOpen = world.doorOpen;
+        w.potionCarrierId = world.potionCarrierId;
         w.potionX = world.potionX;
         w.potionY = world.potionY;
         w.doorX = world.doorX;
@@ -160,6 +166,20 @@ public final class GameSession {
         w.doorWidth = world.doorWidth;
         w.doorHeight = world.doorHeight;
         return w;
+    }
+
+    public static String catColor(int cat) {
+        switch (cat) {
+            case 1: return "lila";
+            case 2: return "rojo";
+            case 3: return "turquesa";
+            case 4: return "amarillo";
+            case 5: return "verde";
+            case 6: return "azul oscuro";
+            case 7: return "naranja";
+            case 8: return "azul claro";
+            default: return "sin color";
+        }
     }
 
     public static String sanitizeNickname(String value) {

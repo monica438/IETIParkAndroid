@@ -179,6 +179,7 @@ public final class GameWebSocketClient {
             ps.facingRight = p.getBoolean("facingRight", true);
             ps.grounded = p.getBoolean("grounded", false);
             ps.viewer = p.getBoolean("viewer", false);
+            ps.hasPotion = p.getBoolean("hasPotion", false);
             list.add(ps);
         }
         return list;
@@ -189,6 +190,7 @@ public final class GameWebSocketClient {
         GameSession.WorldState w = new GameSession.WorldState();
         w.potionTaken = node.getBoolean("potionTaken", false);
         w.doorOpen = node.getBoolean("doorOpen", false);
+        w.potionCarrierId = node.getString("potionCarrierId", "");
         w.potionX = node.getFloat("potionX", w.potionX);
         w.potionY = node.getFloat("potionY", w.potionY);
         w.doorX = node.getFloat("doorX", w.doorX);

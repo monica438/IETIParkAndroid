@@ -78,7 +78,9 @@ public class MenuScreen extends ScreenAdapter {
     @Override public void show() {
         Gdx.input.setInputProcessor(input);
         Gdx.input.setOnscreenKeyboardVisible(true);
-        if (!GameSession.get().isConnected()) GameSession.get().connect(nickname.toString());
+        // En el menú todavía NO entramos en la sala.
+        // El servidor solo recibe el JOIN cuando el usuario pulsa PLAY.
+        GameSession.get().disconnect();
     }
 
     @Override public void hide() { Gdx.input.setOnscreenKeyboardVisible(false); }
@@ -105,22 +107,12 @@ public class MenuScreen extends ScreenAdapter {
         BitmapFont font = game.getFont();
         batch.setProjectionMatrix(viewport.getCamera().combined);
         batch.begin();
-        draw(font, batch, "CAT POTION COOP", 0, 635, 3f, PRIMARY, true);
+        draw(font, batch, "IETI PARK", 0, 635, 3f, PRIMARY, true);
         draw(font, batch, "Nickname", nicknameBox.x, nicknameBox.y + 105, 1.3f, DIM, false);
         draw(font, batch, nickname.toString() + (editingNickname && ((int)(refreshTimer * 2) % 2 == 0) ? "_" : ""), nicknameBox.x + 24, nicknameBox.y + 43, 1.75f, Color.WHITE, false);
         draw(font, batch, "PLAY", 0, playButton.y + 49, 2.1f, Color.valueOf("061007"), true);
-        draw(font, batch, GameSession.get().getStatus(), 0, 300, 1.15f, DIM, true);
-        draw(font, batch, "Jugadores en sala:", 340, 260, 1.35f, PRIMARY, false);
-        List<GameSession.PlayerState> players = GameSession.get().snapshotPlayers();
-        if (players.isEmpty()) {
-            draw(font, batch, "Aun no hay jugadores conectados", 340, 226, 1.05f, DIM, false);
-        } else {
-            float y = 226;
-            for (GameSession.PlayerState p : players) {
-                draw(font, batch, "cat" + p.cat + "  " + p.nickname, 340, y, 1.05f, Color.WHITE, false);
-                y -= 28;
-            }
-        }
+        draw(font, batch, "Pulsa PLAY para entrar en la sala", 0, 300, 1.15f, DIM, true);
+        draw(font, batch, "No apareces en la partida hasta pulsar PLAY", 0, 260, 1.05f, DIM, true);
         draw(font, batch, "Servidor: " + GameSession.SERVER_URL + "   WebSocket/WSS", 0, 72, 1.05f, DIM, true);
         batch.end();
     }
