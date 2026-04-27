@@ -36,6 +36,8 @@ public class PlayScreen extends ScreenAdapter {
     private static final float ACTION_BUTTON_RADIUS = 58f;
     private static final float TOUCH_AXIS_DEAD_ZONE = 0.18f;
     private static final int MAX_TOUCH_POINTS = 20;
+    private static final float PLAYER_DRAW_SIZE = 24f;
+    private static final float CARRIED_POTION_SIZE = 10f;
     private static final Color HUD = Color.valueOf("FFFFFF");
     private static final Color PANEL = Color.valueOf("07140ACC");
     private static final Color STROKE = Color.valueOf("7EE5A4CC");
@@ -66,6 +68,7 @@ public class PlayScreen extends ScreenAdapter {
     private final Rectangle backButton = new Rectangle();
 
     private int firstPlayerSpriteIndex;
+    private int carriedPotionSpriteIndex = -1;
     private int joystickPointer = -1;
     private int actionPointer = -1;
     private float sendAccumulator = 0f;
@@ -85,6 +88,7 @@ public class PlayScreen extends ScreenAdapter {
         buildAnimationIndex();
         hideEditorCats();
         addPlayerSlots();
+        addSmallPotionSprite();
         initializeRuntimeStates();
         viewport.update(Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), false);
         hudViewport.update(Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), true);
@@ -168,19 +172,28 @@ public class PlayScreen extends ScreenAdapter {
                 state.visible = true;
             }
 
-            if (type.contains("potion")) {
+            if (type.contains("potion") && i != carriedPotionSpriteIndex) {
                 GameSession.PlayerState carrier = findPotionCarrier(world, players);
                 if (carrier == null) {
-                    // Poción sin coger: se dibuja en su posición del nivel.
+                    // Poción en el suelo.
                     state.visible = true;
                     state.worldX = world.potionX;
                     state.worldY = world.potionY;
                 } else {
-                    // Poción cogida: se dibuja encima del gato portador.
-                    state.visible = true;
-                    state.worldX = carrier.x;
-                    state.worldY = carrier.y - 18f;
+                    // La grande se oculta cuando alguien la lleva.
+                    state.visible = false;
                 }
+            }
+        }
+
+        // Poción pequeña sobre el gato que la ha cogido.
+        if (carriedPotionSpriteIndex >= 0 && carriedPotionSpriteIndex < spriteRuntimeStates.size) {
+            LevelRenderer.SpriteRuntimeState carried = spriteRuntimeStates.get(carriedPotionSpriteIndex);
+            GameSession.PlayerState carrier = findPotionCarrier(world, players);
+            carried.visible = carrier != null;
+            if (carrier != null) {
+                carried.worldX = carrier.x;
+                carried.worldY = carrier.y - 26f;
             }
         }
     }
@@ -203,8 +216,9 @@ public class PlayScreen extends ScreenAdapter {
         state.texturePath = clip.texturePath;
         state.frameWidth = clip.frameWidth;
         state.frameHeight = clip.frameHeight;
-        state.anchorX = clip.anchorX;
-        state.anchorY = clip.anchorY;
+        // Mantener siempre el mismo tamaño visible: solo cambia la región/animación.
+        state.anchorX = 0.5f;
+        state.anchorY = 0.75f;
         float elapsed = animationElapsed.get(spriteIndex) + dt;
         animationElapsed.set(spriteIndex, elapsed);
         int total = totalFrames(state.texturePath, state.frameWidth, state.frameHeight);
@@ -280,10 +294,22 @@ public class PlayScreen extends ScreenAdapter {
         BitmapFont font = game.getFont();
         batch.setProjectionMatrix(hudCamera.combined);
         batch.begin();
-        font.getData().setScale(1.25f); font.setColor(HUD);
+        font.getData().setScale(1.25f);
+        font.setColor(HUD);
         font.draw(batch, "< MENU", backButton.x, backButton.y + backButton.height - 8);
-        // HUD simplificado: solo mi nickname y el color asignado por el servidor.
-        font.draw(batch, GameSession.get().getMyNickname() + " (" + GameSession.get().getMyCatColor() + ")", 18, hudViewport.getWorldHeight() - 18);
+
+        // Botón de salto: texto claro dentro del círculo.
+        font.getData().setScale(1.05f);
+        font.setColor(Color.WHITE);
+        layout.setText(font, "JUMP");
+        font.draw(batch, layout, actionButtonCenter.x - layout.width * 0.5f, actionButtonCenter.y + layout.height * 0.5f);
+
+        // Nick arriba a la derecha para no pisar el botón de menú.
+        String playerText = GameSession.get().getMyNickname() + " (" + GameSession.get().getMyCatColor() + ")";
+        font.getData().setScale(1.15f);
+        font.setColor(Color.YELLOW);
+        layout.setText(font, playerText);
+        font.draw(batch, layout, hudViewport.getWorldWidth() - layout.width - 18f, hudViewport.getWorldHeight() - 18f);
         font.getData().setScale(1f); font.setColor(Color.WHITE);
         batch.end();
     }
@@ -314,13 +340,40 @@ public class PlayScreen extends ScreenAdapter {
         for (int cat = 1; cat <= PLAYER_SLOTS; cat++) {
             String animId = animationIdByName.get(normalize("idle_cat" + cat));
             String texture = "levels/media/idle_cat" + cat + ".png";
-            // Las animaciones run/jump usan spritesheets de 20x20/20x24.
-            // Dibujamos SIEMPRE el gato a 20x20 para que no parezca que encoge al correr.
-            float drawW = 20f, drawH = 20f, ax = 0.5f, ay = 0.7f;
+            // Todos los gatos se dibujan al mismo tamaño aunque cambie la animación.
+            float drawW = PLAYER_DRAW_SIZE, drawH = PLAYER_DRAW_SIZE, ax = 0.5f, ay = 0.75f;
             LevelData.AnimationClip clip = animId == null ? null : levelData.animationClips.get(animId);
-            if (clip != null) { texture = clip.texturePath; ax = clip.anchorX; ay = clip.anchorY; }
+            if (clip != null) { texture = clip.texturePath; }
             levelData.sprites.add(new LevelData.LevelSprite("player_cat" + cat, "player", 0f, -200, -200, drawW, drawH, ax, ay, false, false, 0, texture, animId));
             playerSlotByCat.put(cat, firstPlayerSpriteIndex + cat - 1);
+        }
+    }
+
+
+    private void addSmallPotionSprite() {
+        for (int i = 0; i < levelData.sprites.size; i++) {
+            LevelData.LevelSprite s = levelData.sprites.get(i);
+            String type = normalize(s.type + " " + s.name);
+            if (type.contains("potion")) {
+                carriedPotionSpriteIndex = levelData.sprites.size;
+                levelData.sprites.add(new LevelData.LevelSprite(
+                    "potion_carried",
+                    "potion_carried",
+                    s.depth,
+                    -200,
+                    -200,
+                    CARRIED_POTION_SIZE,
+                    CARRIED_POTION_SIZE,
+                    0.5f,
+                    0.5f,
+                    false,
+                    false,
+                    s.frameIndex,
+                    s.texturePath,
+                    s.animationId
+                ));
+                return;
+            }
         }
     }
 
@@ -328,7 +381,8 @@ public class PlayScreen extends ScreenAdapter {
         spriteRuntimeStates.clear(); animationElapsed.clear();
         for (int i = 0; i < levelData.sprites.size; i++) {
             LevelData.LevelSprite s = levelData.sprites.get(i);
-            boolean visible = !normalize(s.type + " " + s.name).contains("cat") || i >= firstPlayerSpriteIndex;
+            String kind = normalize(s.type + " " + s.name);
+            boolean visible = (!kind.contains("cat") || i >= firstPlayerSpriteIndex) && !kind.contains("potion_carried");
             spriteRuntimeStates.add(new LevelRenderer.SpriteRuntimeState(s.frameIndex, s.anchorX, s.anchorY, s.x, s.y, visible, s.flipX, s.flipY, Math.max(1, Math.round(s.width)), Math.max(1, Math.round(s.height)), s.texturePath, s.animationId));
             animationElapsed.add(0f);
         }

@@ -65,6 +65,7 @@ public final class GameSession {
     private int myCat = 1;
     private String status = "Desconectado";
     private boolean connected;
+    private boolean viewerMode;
     private GameWebSocketClient client;
 
     private GameSession() {}
@@ -84,8 +85,18 @@ public final class GameSession {
     public synchronized void connect(String nickname) {
         setRequestedNickname(nickname);
         disconnect();
+        viewerMode = false;
         status = "Conectando a " + SERVER_URL;
-        client = new GameWebSocketClient(SERVER_URL, requestedNickname);
+        client = new GameWebSocketClient(SERVER_URL, requestedNickname, false);
+        client.connectAsync();
+    }
+
+    public synchronized void connectAsViewer() {
+        if (client != null && viewerMode) return;
+        disconnect();
+        viewerMode = true;
+        status = "Mirando sala";
+        client = new GameWebSocketClient(SERVER_URL, "viewer", true);
         client.connectAsync();
     }
 
@@ -95,6 +106,7 @@ public final class GameSession {
             client = null;
         }
         connected = false;
+        viewerMode = false;
         myId = "";
         myNickname = "";
         players.clear();
@@ -118,6 +130,12 @@ public final class GameSession {
     }
 
     synchronized void onJoinOk(String id, String nickname, int cat) {
+        if (cat <= 0) {
+            viewerMode = true;
+            status = "Mirando sala";
+            return;
+        }
+        viewerMode = false;
         myId = id;
         myNickname = nickname;
         myCat = Math.max(1, Math.min(MAX_PLAYERS, cat));

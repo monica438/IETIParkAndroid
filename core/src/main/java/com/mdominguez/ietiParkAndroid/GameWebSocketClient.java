@@ -10,14 +10,28 @@ import com.github.czyzby.websocket.WebSockets;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Cliente WebSocket adaptado a:
+ * implementation "com.github.MrStahlfelge.gdx-websockets:core:$wsVersion"
+ * wsVersion = '1.9.10.3'
+ *
+ * Importante: en AndroidLauncher/DesktopLauncher hay que llamar a CommonWebSockets.initiate()
+ * antes de crear el juego.
+ */
 public final class GameWebSocketClient {
     private final String url;
     private final String nickname;
+    private final boolean viewer;
     private WebSocket socket;
 
     public GameWebSocketClient(String url, String nickname) {
+        this(url, nickname, false);
+    }
+
+    public GameWebSocketClient(String url, String nickname, boolean viewer) {
         this.url = url;
         this.nickname = GameSession.sanitizeNickname(nickname);
+        this.viewer = viewer;
     }
 
     public void connectAsync() {
@@ -34,7 +48,11 @@ public final class GameWebSocketClient {
                             GameSession.get().onConnected();
                         }
                     });
-                    sendRaw("{\"type\":\"JOIN\",\"nickname\":\"" + escape(nickname) + "\",\"client\":\"libgdx\"}");
+                    if (viewer) {
+                        sendRaw("{\"type\":\"JOIN\",\"nickname\":\"viewer\",\"client\":\"viewer\",\"viewer\":true}");
+                    } else {
+                        sendRaw("{\"type\":\"JOIN\",\"nickname\":\"" + escape(nickname) + "\",\"client\":\"libgdx\"}");
+                    }
                     return WebSocketListener.FULLY_HANDLED;
                 }
 
