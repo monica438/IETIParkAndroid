@@ -240,13 +240,15 @@ public final class LevelRenderer {
         boolean flipY = runtimeState == null ? sprite.flipY : runtimeState.flipY;
         Texture texture = assets.get(texturePath, Texture.class);
         configureTexture(texture);
-        float leftDown = worldX - sprite.width * anchorX;
-        float topDown = worldY - sprite.height * anchorY;
+        float drawWidth = runtimeState == null || runtimeState.drawWidth <= 0f ? sprite.width : runtimeState.drawWidth;
+        float drawHeight = runtimeState == null || runtimeState.drawHeight <= 0f ? sprite.height : runtimeState.drawHeight;
+        float leftDown = worldX - drawWidth * anchorX;
+        float topDown = worldY - drawHeight * anchorY;
         float x = leftDown;
-        float y = worldHeight - topDown - sprite.height;
-        float originX = sprite.width * anchorX;
+        float y = worldHeight - topDown - drawHeight;
+        float originX = drawWidth * anchorX;
         // anchorY is defined from top in y-down space; SpriteBatch origin is from bottom in y-up space.
-        float originY = sprite.height * (1f - anchorY);
+        float originY = drawHeight * (1f - anchorY);
         int frameWidth = runtimeState == null ? Math.max(1, Math.round(sprite.width)) : Math.max(1, runtimeState.frameWidth);
         int frameHeight = runtimeState == null ? Math.max(1, Math.round(sprite.height)) : Math.max(1, runtimeState.frameHeight);
         frameWidth = Math.min(frameWidth, texture.getWidth());
@@ -273,8 +275,8 @@ public final class LevelRenderer {
             y,
             originX,
             originY,
-            sprite.width,
-            sprite.height,
+            drawWidth,
+            drawHeight,
             flipX ? -1f : 1f,
             flipY ? -1f : 1f,
             0f
@@ -331,6 +333,8 @@ public final class LevelRenderer {
         public boolean flipY;
         public int frameWidth;
         public int frameHeight;
+        public float drawWidth;
+        public float drawHeight;
         public String texturePath;
         public String animationId;
 
@@ -358,6 +362,8 @@ public final class LevelRenderer {
             this.flipY = flipY;
             this.frameWidth = frameWidth;
             this.frameHeight = frameHeight;
+            this.drawWidth = frameWidth;
+            this.drawHeight = frameHeight;
             this.texturePath = texturePath;
             this.animationId = animationId;
         }

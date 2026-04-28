@@ -38,7 +38,8 @@ public class PlayScreen extends ScreenAdapter {
     private static final float TOUCH_AXIS_DEAD_ZONE = 0.18f;
     private static final int MAX_TOUCH_POINTS = 20;
     private static final float PLAYER_DRAW_SIZE = 32f;
-    private static final float CARRIED_POTION_SIZE = 8f;
+    private static final float CAT_SOURCE_BASE_SIZE = 16f;
+    private static final float CARRIED_POTION_SIZE = 16f;
     private static final Color HUD = Color.BLACK;
     private static final Color PANEL = Color.valueOf("07140ACC");
     private static final Color STROKE = Color.valueOf("7EE5A4CC");
@@ -85,7 +86,7 @@ public class PlayScreen extends ScreenAdapter {
         this.nickname = GameSession.sanitizeNickname(nickname);
         this.levelData = LevelLoader.loadLevel(levelIndex);
         this.layerVisibilityStates = buildInitialLayerVisibility(levelData);
-        this.viewport = new FitViewport(Math.max(levelData.viewportWidth, levelData.worldWidth), Math.max(levelData.viewportHeight, levelData.worldHeight), camera);
+        this.viewport = new FitViewport(levelData.viewportWidth, levelData.viewportHeight, camera);
         buildAnimationIndex();
         hideEditorCats();
         addPlayerSlots();
@@ -133,7 +134,6 @@ public class PlayScreen extends ScreenAdapter {
         levelRenderer.render(levelData, game.getAssetManager(), batch, camera, spriteRuntimeStates, layerVisibilityStates, layerRuntimeStates);
         drawPotionOverCarrier(batch);
         batch.end();
-        drawExtraZones();
         renderHud();
     }
 
@@ -214,7 +214,11 @@ public class PlayScreen extends ScreenAdapter {
         state.texturePath = clip.texturePath;
         state.frameWidth = clip.frameWidth;
         state.frameHeight = clip.frameHeight;
-        // Mantener siempre el mismo tamaño visible: solo cambia la región/animación.
+        // Las animaciones run/jump usan frames más grandes que idle.
+        // Para que el gato no parezca pequeño, mantenemos la misma escala de píxel:
+        // idle 16px -> 32px, run 20px -> 40px, jump 20x24px -> 40x48px.
+        state.drawWidth = PLAYER_DRAW_SIZE * Math.max(1f, clip.frameWidth) / CAT_SOURCE_BASE_SIZE;
+        state.drawHeight = PLAYER_DRAW_SIZE * Math.max(1f, clip.frameHeight) / CAT_SOURCE_BASE_SIZE;
         state.anchorX = 0.5f;
         state.anchorY = 0.75f;
         float elapsed = animationElapsed.get(spriteIndex) + dt;
@@ -341,24 +345,6 @@ public class PlayScreen extends ScreenAdapter {
         return null;
     }
 
-    private void drawExtraZones() {
-        ShapeRenderer shapes = game.getShapeRenderer();
-        Gdx.gl.glEnable(GL20.GL_BLEND);
-        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
-        shapes.setProjectionMatrix(camera.combined);
-        shapes.begin(ShapeRenderer.ShapeType.Filled);
-        for (int i = 0; i < levelData.zones.size; i++) {
-            LevelData.LevelZone z = levelData.zones.get(i);
-            String type = normalize(z.type + " " + z.name);
-            if (type.contains("rampa") || type.contains("category 3")) {
-                shapes.setColor(1f, 0.85f, 0.10f, 0.45f);
-                shapes.rect(z.x, levelData.worldHeight - z.y - z.height, z.width, z.height);
-            }
-        }
-        shapes.end();
-        Gdx.gl.glDisable(GL20.GL_BLEND);
-    }
-
     private boolean handleBackButton() {
         if (!Gdx.input.justTouched()) return false;
         hudViewport.unproject(hudTouchPoint3.set(Gdx.input.getX(), Gdx.input.getY(), 0));
@@ -428,7 +414,10 @@ public class PlayScreen extends ScreenAdapter {
             LevelData.LevelSprite s = levelData.sprites.get(i);
             String kind = normalize(s.type + " " + s.name);
             boolean visible = (!kind.contains("cat") || i >= firstPlayerSpriteIndex) && !kind.contains("potion_carried");
-            spriteRuntimeStates.add(new LevelRenderer.SpriteRuntimeState(s.frameIndex, s.anchorX, s.anchorY, s.x, s.y, visible, s.flipX, s.flipY, Math.max(1, Math.round(s.width)), Math.max(1, Math.round(s.height)), s.texturePath, s.animationId));
+            LevelRenderer.SpriteRuntimeState runtime = new LevelRenderer.SpriteRuntimeState(s.frameIndex, s.anchorX, s.anchorY, s.x, s.y, visible, s.flipX, s.flipY, Math.max(1, Math.round(s.width)), Math.max(1, Math.round(s.height)), s.texturePath, s.animationId);
+            runtime.drawWidth = s.width;
+            runtime.drawHeight = s.height;
+            spriteRuntimeStates.add(runtime);
             animationElapsed.add(0f);
         }
         layerRuntimeStates.clear();
@@ -443,7 +432,7 @@ public class PlayScreen extends ScreenAdapter {
 
     private void applyInitialCamera() {
         camera.setToOrtho(false);
-        camera.position.set(viewport.getWorldWidth() * 0.5f, levelData.worldHeight - viewport.getWorldHeight() * 0.5f, 0);
+        camera.position.set(levelData.viewportX + levelData.viewportWidth * 0.5f, levelData.worldHeight - levelData.viewportY - levelData.viewportHeight * 0.5f, 0);
         camera.update();
     }
 
