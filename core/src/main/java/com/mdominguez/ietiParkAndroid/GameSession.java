@@ -48,6 +48,8 @@ public final class GameSession {
     public static final class WorldState {
         public boolean potionTaken;
         public boolean doorOpen;
+        public boolean treeOpening;
+        public boolean potionConsumed;
         public String potionCarrierId = "";
         public float potionX = 157f;
         public float potionY = 145f;
@@ -155,6 +157,8 @@ public final class GameSession {
         if (ws == null) return;
         world.potionTaken = ws.potionTaken;
         world.doorOpen = ws.doorOpen;
+        world.treeOpening = ws.treeOpening;
+        world.potionConsumed = ws.potionConsumed;
         world.potionCarrierId = ws.potionCarrierId == null ? "" : ws.potionCarrierId;
         world.potionX = ws.potionX;
         world.potionY = ws.potionY;
@@ -176,6 +180,8 @@ public final class GameSession {
         WorldState w = new WorldState();
         w.potionTaken = world.potionTaken;
         w.doorOpen = world.doorOpen;
+        w.treeOpening = world.treeOpening;
+        w.potionConsumed = world.potionConsumed;
         w.potionCarrierId = world.potionCarrierId;
         w.potionX = world.potionX;
         w.potionY = world.potionY;

@@ -10,14 +10,6 @@ import com.github.czyzby.websocket.WebSockets;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Cliente WebSocket adaptado a:
- * implementation "com.github.MrStahlfelge.gdx-websockets:core:$wsVersion"
- * wsVersion = '1.9.10.3'
- *
- * Importante: en AndroidLauncher/DesktopLauncher hay que llamar a CommonWebSockets.initiate()
- * antes de crear el juego.
- */
 public final class GameWebSocketClient {
     private final String url;
     private final String nickname;
@@ -208,6 +200,8 @@ public final class GameWebSocketClient {
         GameSession.WorldState w = new GameSession.WorldState();
         w.potionTaken = node.getBoolean("potionTaken", false);
         w.doorOpen = node.getBoolean("doorOpen", false);
+        w.treeOpening = node.getBoolean("treeOpening", false);
+        w.potionConsumed = node.getBoolean("potionConsumed", false);
         w.potionCarrierId = node.getString("potionCarrierId", "");
         w.potionX = node.getFloat("potionX", w.potionX);
         w.potionY = node.getFloat("potionY", w.potionY);

@@ -10,6 +10,7 @@ import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
@@ -39,7 +40,11 @@ public class PlayScreen extends ScreenAdapter {
     private static final int MAX_TOUCH_POINTS = 20;
     private static final float PLAYER_DRAW_SIZE = 32f;
     private static final float CAT_SOURCE_BASE_SIZE = 16f;
-    private static final float CARRIED_POTION_SIZE = 16f;
+    private static final float CARRIED_POTION_SIZE = 20f;
+    // El spritesheet de la poción es grande; en el mundo la dibujamos más pequeña.
+    private static final float POTION_FLOOR_SIZE = 24f;
+    private static final float TREE_DRAW_SIZE = 100f;
+    private static final float TREE_ALIVE_FPS = 4f;
     private static final Color HUD = Color.BLACK;
     private static final Color PANEL = Color.valueOf("07140ACC");
     private static final Color STROKE = Color.valueOf("7EE5A4CC");
@@ -71,6 +76,10 @@ public class PlayScreen extends ScreenAdapter {
 
     private int firstPlayerSpriteIndex;
     private int carriedPotionSpriteIndex = -1;
+    private int treeSpriteIndex = -1;
+    private boolean treeWasOpening = false;
+    private boolean treeAnimationFinished = false;
+    private float treeAnimationTime = 0f;
     private int joystickPointer = -1;
     private int actionPointer = -1;
     private float sendAccumulator = 0f;
@@ -165,34 +174,95 @@ public class PlayScreen extends ScreenAdapter {
     }
 
     private void applyPotionAndTree(GameSession.WorldState world, List<GameSession.PlayerState> players) {
+        if (world == null) return;
+
+        // 1) Poción en el suelo: se anima siempre mientras esté disponible.
+        // Cuando alguien la lleva, se oculta la grande y se dibuja una pequeña encima del gato.
+        boolean potionOnFloor = !world.potionTaken && !world.potionConsumed && findPotionCarrier(world, players) == null;
         for (int i = 0; i < levelData.sprites.size && i < spriteRuntimeStates.size; i++) {
             LevelData.LevelSprite sprite = levelData.sprites.get(i);
             String type = normalize(sprite.type + " " + sprite.name);
             LevelRenderer.SpriteRuntimeState state = spriteRuntimeStates.get(i);
 
-            // El árbol es la puerta visual: nunca desaparece.
-            if (type.contains("tree")) {
-                state.visible = true;
-            }
-
             if (type.contains("potion") && i != carriedPotionSpriteIndex) {
-                GameSession.PlayerState carrier = findPotionCarrier(world, players);
-                if (carrier == null) {
-                    // Poción en el suelo.
-                    state.visible = true;
+                state.visible = potionOnFloor;
+                if (potionOnFloor) {
                     state.worldX = world.potionX;
                     state.worldY = world.potionY;
-                } else {
-                    // La grande se oculta cuando alguien la lleva.
-                    state.visible = false;
+                    // La poción usa frames de 45x45. No hay que aplicarle la escala de gato.
+                    applyWorldAnimation(i, "potion_red", Gdx.graphics.getDeltaTime(), POTION_FLOOR_SIZE, POTION_FLOOR_SIZE);
                 }
+            }
+
+            if (type.contains("tree")) {
+                treeSpriteIndex = i;
             }
         }
 
-        // La poción que va encima del gato la dibujamos a mano para que siempre sea pequeña
-        // y no dependa del tamaño del sprite original.
+        // 2) Árbol: empieza muerto y animado en bucle. Cuando la poción lo cura,
+        // reproduce tree_alive lentamente una sola vez y se queda en el último frame.
+        updateTreeAnimation(world);
+
         if (carriedPotionSpriteIndex >= 0 && carriedPotionSpriteIndex < spriteRuntimeStates.size) {
             spriteRuntimeStates.get(carriedPotionSpriteIndex).visible = false;
+        }
+    }
+
+    private void updateTreeAnimation(GameSession.WorldState world) {
+        if (treeSpriteIndex < 0 || treeSpriteIndex >= spriteRuntimeStates.size) return;
+
+        if (world.doorOpen) {
+            if (!world.treeOpening && !treeWasOpening) {
+                treeWasOpening = true;
+                treeAnimationFinished = true;
+                treeAnimationTime = 999f;
+            } else if (!treeWasOpening) {
+                treeWasOpening = true;
+                treeAnimationFinished = false;
+                treeAnimationTime = 0f;
+            }
+            playTreeAliveOnce(treeSpriteIndex);
+        } else {
+            treeWasOpening = false;
+            treeAnimationFinished = false;
+            treeAnimationTime = 0f;
+            // El árbol muerto también es un spritesheet, pero siempre se dibuja a 100x100.
+            applyWorldAnimation(treeSpriteIndex, "tree_died", Gdx.graphics.getDeltaTime(), TREE_DRAW_SIZE, TREE_DRAW_SIZE);
+        }
+    }
+
+    private void playTreeAliveOnce(int spriteIndex) {
+        String id = animationIdByName.get(normalize("tree_alive"));
+        if (id == null) return;
+        LevelData.AnimationClip clip = levelData.animationClips.get(id);
+        if (clip == null) return;
+
+        LevelRenderer.SpriteRuntimeState state = spriteRuntimeStates.get(spriteIndex);
+        state.visible = true;
+        state.animationId = id;
+        state.texturePath = clip.texturePath;
+        state.frameWidth = clip.frameWidth;
+        state.frameHeight = clip.frameHeight;
+        state.drawWidth = TREE_DRAW_SIZE;
+        state.drawHeight = TREE_DRAW_SIZE;
+        state.anchorX = clip.anchorX;
+        state.anchorY = clip.anchorY;
+
+        int total = totalFrames(state.texturePath, state.frameWidth, state.frameHeight);
+        int start = Math.max(0, Math.min(total - 1, clip.startFrame));
+        int end = Math.max(start, Math.min(total - 1, clip.endFrame));
+
+        if (!treeAnimationFinished) {
+            treeAnimationTime += Gdx.graphics.getDeltaTime();
+            int frameOffset = (int)(treeAnimationTime * TREE_ALIVE_FPS);
+            int frame = start + frameOffset;
+            if (frame >= end) {
+                frame = end;
+                treeAnimationFinished = true;
+            }
+            state.frameIndex = frame;
+        } else {
+            state.frameIndex = end;
         }
     }
 
@@ -229,6 +299,32 @@ public class PlayScreen extends ScreenAdapter {
         int span = Math.max(1, end - start + 1);
         int frame = start + ((int)(elapsed * Math.max(1f, clip.fps)) % span);
         state.frameIndex = frame;
+    }
+
+    private void applyWorldAnimation(int spriteIndex, String animationName, float dt, float drawWidth, float drawHeight) {
+        String id = animationIdByName.get(normalize(animationName));
+        if (id == null || spriteIndex < 0 || spriteIndex >= spriteRuntimeStates.size) return;
+
+        LevelData.AnimationClip clip = levelData.animationClips.get(id);
+        if (clip == null) return;
+
+        LevelRenderer.SpriteRuntimeState state = spriteRuntimeStates.get(spriteIndex);
+        state.animationId = id;
+        state.texturePath = clip.texturePath;
+        state.frameWidth = clip.frameWidth;
+        state.frameHeight = clip.frameHeight;
+        state.drawWidth = drawWidth;
+        state.drawHeight = drawHeight;
+        state.anchorX = clip.anchorX;
+        state.anchorY = clip.anchorY;
+
+        float elapsed = animationElapsed.get(spriteIndex) + dt;
+        animationElapsed.set(spriteIndex, elapsed);
+        int total = totalFrames(state.texturePath, state.frameWidth, state.frameHeight);
+        int start = Math.max(0, Math.min(total - 1, clip.startFrame));
+        int end = Math.max(start, Math.min(total - 1, clip.endFrame));
+        int span = Math.max(1, end - start + 1);
+        state.frameIndex = start + ((int)(elapsed * Math.max(1f, clip.fps)) % span);
     }
 
     private int totalFrames(String path, int fw, int fh) {
@@ -321,6 +417,8 @@ public class PlayScreen extends ScreenAdapter {
 
     private void drawPotionOverCarrier(SpriteBatch batch) {
         GameSession.WorldState world = GameSession.get().snapshotWorld();
+        if (world == null || world.potionConsumed) return;
+
         List<GameSession.PlayerState> players = GameSession.get().snapshotPlayers();
         GameSession.PlayerState carrier = findPotionCarrier(world, players);
         if (carrier == null) return;
@@ -329,11 +427,27 @@ public class PlayScreen extends ScreenAdapter {
         if (texturePath == null || !game.getAssetManager().isLoaded(texturePath, Texture.class)) return;
 
         Texture potionTexture = game.getAssetManager().get(texturePath, Texture.class);
+        int frameW = 45;
+        int frameH = 45;
+        int cols = Math.max(1, potionTexture.getWidth() / frameW);
+        int rows = Math.max(1, potionTexture.getHeight() / frameH);
+        int total = Math.max(1, cols * rows);
+        int frame = ((int)(animationElapsed.get(carriedPotionSpriteIndex) * 10f)) % total;
+        animationElapsed.set(carriedPotionSpriteIndex, animationElapsed.get(carriedPotionSpriteIndex) + Gdx.graphics.getDeltaTime());
+
+        TextureRegion region = new TextureRegion(
+            potionTexture,
+            (frame % cols) * frameW,
+            (frame / cols) * frameH,
+            frameW,
+            frameH
+        );
+
         float size = CARRIED_POTION_SIZE;
         float x = carrier.x - size * 0.5f;
-        float yDown = carrier.y - 24f;
+        float yDown = carrier.y - 30f;
         float y = levelData.worldHeight - yDown - size * 0.5f;
-        batch.draw(potionTexture, x, y, size, size);
+        batch.draw(region, x, y, size, size);
     }
 
     private String findPotionTexturePath() {
