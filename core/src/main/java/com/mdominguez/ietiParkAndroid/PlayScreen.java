@@ -8,6 +8,7 @@ import com.badlogic.gdx.assets.AssetManager;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
@@ -36,9 +37,9 @@ public class PlayScreen extends ScreenAdapter {
     private static final float ACTION_BUTTON_RADIUS = 58f;
     private static final float TOUCH_AXIS_DEAD_ZONE = 0.18f;
     private static final int MAX_TOUCH_POINTS = 20;
-    private static final float PLAYER_DRAW_SIZE = 24f;
-    private static final float CARRIED_POTION_SIZE = 10f;
-    private static final Color HUD = Color.valueOf("FFFFFF");
+    private static final float PLAYER_DRAW_SIZE = 32f;
+    private static final float CARRIED_POTION_SIZE = 8f;
+    private static final Color HUD = Color.BLACK;
     private static final Color PANEL = Color.valueOf("07140ACC");
     private static final Color STROKE = Color.valueOf("7EE5A4CC");
     private static final Color ACCENT = Color.valueOf("35FF74DD");
@@ -84,7 +85,7 @@ public class PlayScreen extends ScreenAdapter {
         this.nickname = GameSession.sanitizeNickname(nickname);
         this.levelData = LevelLoader.loadLevel(levelIndex);
         this.layerVisibilityStates = buildInitialLayerVisibility(levelData);
-        this.viewport = new FitViewport(levelData.viewportWidth, levelData.viewportHeight, camera);
+        this.viewport = new FitViewport(Math.max(levelData.viewportWidth, levelData.worldWidth), Math.max(levelData.viewportHeight, levelData.worldHeight), camera);
         buildAnimationIndex();
         hideEditorCats();
         addPlayerSlots();
@@ -130,7 +131,9 @@ public class PlayScreen extends ScreenAdapter {
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
         levelRenderer.render(levelData, game.getAssetManager(), batch, camera, spriteRuntimeStates, layerVisibilityStates, layerRuntimeStates);
+        drawPotionOverCarrier(batch);
         batch.end();
+        drawExtraZones();
         renderHud();
     }
 
@@ -186,15 +189,10 @@ public class PlayScreen extends ScreenAdapter {
             }
         }
 
-        // Poción pequeña sobre el gato que la ha cogido.
+        // La poción que va encima del gato la dibujamos a mano para que siempre sea pequeña
+        // y no dependa del tamaño del sprite original.
         if (carriedPotionSpriteIndex >= 0 && carriedPotionSpriteIndex < spriteRuntimeStates.size) {
-            LevelRenderer.SpriteRuntimeState carried = spriteRuntimeStates.get(carriedPotionSpriteIndex);
-            GameSession.PlayerState carrier = findPotionCarrier(world, players);
-            carried.visible = carrier != null;
-            if (carrier != null) {
-                carried.worldX = carrier.x;
-                carried.worldY = carrier.y - 26f;
-            }
+            spriteRuntimeStates.get(carriedPotionSpriteIndex).visible = false;
         }
     }
 
@@ -298,20 +296,67 @@ public class PlayScreen extends ScreenAdapter {
         font.setColor(HUD);
         font.draw(batch, "< MENU", backButton.x, backButton.y + backButton.height - 8);
 
-        // Botón de salto: texto claro dentro del círculo.
-        font.getData().setScale(1.05f);
-        font.setColor(Color.WHITE);
-        layout.setText(font, "JUMP");
-        font.draw(batch, layout, actionButtonCenter.x - layout.width * 0.5f, actionButtonCenter.y + layout.height * 0.5f);
+        // En escritorio no enseñamos el botón táctil, así que tampoco escribimos JUMP.
+        if (shouldShowTouchControls()) {
+            font.getData().setScale(1.05f);
+            font.setColor(Color.BLACK);
+            layout.setText(font, "JUMP");
+            font.draw(batch, layout, actionButtonCenter.x - layout.width * 0.5f, actionButtonCenter.y + layout.height * 0.5f);
+        }
 
         // Nick arriba a la derecha para no pisar el botón de menú.
         String playerText = GameSession.get().getMyNickname() + " (" + GameSession.get().getMyCatColor() + ")";
         font.getData().setScale(1.15f);
-        font.setColor(Color.YELLOW);
+        font.setColor(Color.BLACK);
         layout.setText(font, playerText);
         font.draw(batch, layout, hudViewport.getWorldWidth() - layout.width - 18f, hudViewport.getWorldHeight() - 18f);
         font.getData().setScale(1f); font.setColor(Color.WHITE);
         batch.end();
+    }
+
+
+    private void drawPotionOverCarrier(SpriteBatch batch) {
+        GameSession.WorldState world = GameSession.get().snapshotWorld();
+        List<GameSession.PlayerState> players = GameSession.get().snapshotPlayers();
+        GameSession.PlayerState carrier = findPotionCarrier(world, players);
+        if (carrier == null) return;
+
+        String texturePath = findPotionTexturePath();
+        if (texturePath == null || !game.getAssetManager().isLoaded(texturePath, Texture.class)) return;
+
+        Texture potionTexture = game.getAssetManager().get(texturePath, Texture.class);
+        float size = CARRIED_POTION_SIZE;
+        float x = carrier.x - size * 0.5f;
+        float yDown = carrier.y - 24f;
+        float y = levelData.worldHeight - yDown - size * 0.5f;
+        batch.draw(potionTexture, x, y, size, size);
+    }
+
+    private String findPotionTexturePath() {
+        for (int i = 0; i < levelData.sprites.size; i++) {
+            LevelData.LevelSprite s = levelData.sprites.get(i);
+            String type = normalize(s.type + " " + s.name);
+            if (type.contains("potion") && !type.contains("carried")) return s.texturePath;
+        }
+        return null;
+    }
+
+    private void drawExtraZones() {
+        ShapeRenderer shapes = game.getShapeRenderer();
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        shapes.setProjectionMatrix(camera.combined);
+        shapes.begin(ShapeRenderer.ShapeType.Filled);
+        for (int i = 0; i < levelData.zones.size; i++) {
+            LevelData.LevelZone z = levelData.zones.get(i);
+            String type = normalize(z.type + " " + z.name);
+            if (type.contains("rampa") || type.contains("category 3")) {
+                shapes.setColor(1f, 0.85f, 0.10f, 0.45f);
+                shapes.rect(z.x, levelData.worldHeight - z.y - z.height, z.width, z.height);
+            }
+        }
+        shapes.end();
+        Gdx.gl.glDisable(GL20.GL_BLEND);
     }
 
     private boolean handleBackButton() {
@@ -398,7 +443,7 @@ public class PlayScreen extends ScreenAdapter {
 
     private void applyInitialCamera() {
         camera.setToOrtho(false);
-        camera.position.set(levelData.viewportX + levelData.viewportWidth / 2f, levelData.worldHeight - (levelData.viewportY + levelData.viewportHeight / 2f), 0);
+        camera.position.set(viewport.getWorldWidth() * 0.5f, levelData.worldHeight - viewport.getWorldHeight() * 0.5f, 0);
         camera.update();
     }
 

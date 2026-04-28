@@ -50,7 +50,7 @@ public final class GameSession {
         public boolean doorOpen;
         public String potionCarrierId = "";
         public float potionX = 157f;
-        public float potionY = 160f;
+        public float potionY = 145f;
         public float doorX = 262f;
         public float doorY = 153f;
         public float doorWidth = 48f;
