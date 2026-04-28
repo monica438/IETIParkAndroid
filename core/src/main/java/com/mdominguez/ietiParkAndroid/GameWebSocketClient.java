@@ -190,6 +190,7 @@ public final class GameWebSocketClient {
             ps.grounded = p.getBoolean("grounded", false);
             ps.viewer = p.getBoolean("viewer", false);
             ps.hasPotion = p.getBoolean("hasPotion", false);
+            ps.crossedDoor = p.getBoolean("crossedDoor", false);
             list.add(ps);
         }
         return list;
@@ -209,6 +210,12 @@ public final class GameWebSocketClient {
         w.doorY = node.getFloat("doorY", w.doorY);
         w.doorWidth = node.getFloat("doorWidth", w.doorWidth);
         w.doorHeight = node.getFloat("doorHeight", w.doorHeight);
+        w.levelUnlocked = node.getBoolean("levelUnlocked", false);
+        w.allPlayersPassed = node.getBoolean("allPlayersPassed", false);
+        w.shouldChangeScreen = node.getBoolean("shouldChangeScreen", false);
+        w.totalPlayers = node.getInt("totalPlayers", 0);
+        w.passedPlayers = node.getInt("passedPlayers", 0);
+        w.changeReason = node.getString("changeReason", "");
         return w;
     }
 
