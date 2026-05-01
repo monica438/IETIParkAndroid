@@ -78,9 +78,8 @@ public class MenuScreen extends ScreenAdapter {
     @Override public void show() {
         Gdx.input.setInputProcessor(input);
         Gdx.input.setOnscreenKeyboardVisible(true);
-        // En el menú todavía NO entramos en la sala.
-        // El servidor solo recibe el JOIN cuando el usuario pulsa PLAY.
-        GameSession.get().disconnect();
+        // En el menu entramos como visor: vemos la lista, pero no aparecemos como gato.
+        GameSession.get().connectAsViewer();
     }
 
     @Override public void hide() { Gdx.input.setOnscreenKeyboardVisible(false); }
@@ -112,9 +111,24 @@ public class MenuScreen extends ScreenAdapter {
         draw(font, batch, nickname.toString() + (editingNickname && ((int)(refreshTimer * 2) % 2 == 0) ? "_" : ""), nicknameBox.x + 24, nicknameBox.y + 43, 1.75f, Color.WHITE, false);
         draw(font, batch, "PLAY", 0, playButton.y + 49, 2.1f, Color.valueOf("061007"), true);
         draw(font, batch, "Pulsa PLAY para entrar en la sala", 0, 300, 1.15f, DIM, true);
-        draw(font, batch, "No apareces en la partida hasta pulsar PLAY", 0, 260, 1.05f, DIM, true);
+        draw(font, batch, "Jugadores en partida:", 350, 245, 1.1f, PRIMARY, false);
+        drawPlayerList(font, batch, 350, 212);
         draw(font, batch, "Servidor: " + GameSession.SERVER_URL + "   WebSocket/WSS", 0, 72, 1.05f, DIM, true);
         batch.end();
+    }
+
+
+    private void drawPlayerList(BitmapFont font, SpriteBatch batch, float x, float y) {
+        List<GameSession.PlayerState> players = GameSession.get().snapshotPlayers();
+        if (players.isEmpty()) {
+            draw(font, batch, "No hay jugadores conectados", x, y, 1.0f, DIM, false);
+            return;
+        }
+        for (int i = 0; i < players.size() && i < GameSession.MAX_PLAYERS; i++) {
+            GameSession.PlayerState player = players.get(i);
+            String text = player.nickname + " (cat" + player.cat + " " + GameSession.catColor(player.cat) + ")";
+            draw(font, batch, text, x, y - i * 26f, 1.0f, Color.WHITE, false);
+        }
     }
 
     private void startGame() {
