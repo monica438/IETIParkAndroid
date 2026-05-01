@@ -13,11 +13,15 @@ import java.util.List;
 public final class GameWebSocketClient {
     private final String url;
     private final String nickname;
+    private final boolean viewer;
     private WebSocket socket;
 
-    public GameWebSocketClient(String url, String nickname) {
+    public GameWebSocketClient(String url, String nickname) { this(url, nickname, false); }
+
+    public GameWebSocketClient(String url, String nickname, boolean viewer) {
         this.url = url;
         this.nickname = GameSession.sanitizeNickname(nickname);
+        this.viewer = viewer;
     }
 
     public void connectAsync() {
@@ -26,90 +30,55 @@ public final class GameWebSocketClient {
             socket.setSendGracefully(true);
             socket.setSerializeAsString(true);
             socket.addListener(new WebSocketListener() {
-                @Override
-                public boolean onOpen(WebSocket webSocket) {
-                    Gdx.app.postRunnable(new Runnable() {
-                        @Override
-                        public void run() {
-                            GameSession.get().onConnected();
-                        }
-                    });
-                    sendRaw("{\"type\":\"JOIN\",\"nickname\":\"" + escape(nickname) + "\",\"client\":\"libgdx\"}");
+                @Override public boolean onOpen(WebSocket webSocket) {
+                    Gdx.app.postRunnable(new Runnable() { @Override public void run() { GameSession.get().onConnected(); } });
+                    if (viewer) sendRaw("{\"type\":\"JOIN\",\"nickname\":\"viewer\",\"client\":\"viewer\",\"viewer\":true}");
+                    else sendRaw("{\"type\":\"JOIN\",\"nickname\":\"" + escape(nickname) + "\",\"client\":\"libgdx\"}");
                     return WebSocketListener.FULLY_HANDLED;
                 }
 
-                @Override
-                public boolean onClose(WebSocket webSocket, int closeCode, String reason) {
-                    final String msg = reason == null || reason.trim().isEmpty()
-                        ? "Desconectado del servidor"
-                        : "Desconectado: " + reason;
-                    Gdx.app.postRunnable(new Runnable() {
-                        @Override
-                        public void run() {
-                            GameSession.get().onDisconnected(msg);
-                        }
-                    });
+                @Override public boolean onClose(WebSocket webSocket, int closeCode, String reason) {
+                    final String msg = reason == null || reason.trim().isEmpty() ? "Desconectado del servidor" : "Desconectado: " + reason;
+                    Gdx.app.postRunnable(new Runnable() { @Override public void run() { GameSession.get().onDisconnected(msg); } });
                     return WebSocketListener.FULLY_HANDLED;
                 }
 
-                @Override
-                public boolean onMessage(WebSocket webSocket, String packet) {
+                @Override public boolean onMessage(WebSocket webSocket, String packet) {
                     handleTextMessage(packet);
                     return WebSocketListener.FULLY_HANDLED;
                 }
 
-                @Override
-                public boolean onMessage(WebSocket webSocket, byte[] packet) {
-                    if (packet != null) {
-                        handleTextMessage(new String(packet));
-                    }
+                @Override public boolean onMessage(WebSocket webSocket, byte[] packet) {
+                    if (packet != null) handleTextMessage(new String(packet));
                     return WebSocketListener.FULLY_HANDLED;
                 }
 
-                @Override
-                public boolean onError(WebSocket webSocket, final Throwable error) {
+                @Override public boolean onError(WebSocket webSocket, final Throwable error) {
                     Gdx.app.error("GameWebSocketClient", "Error WebSocket", error);
-                    Gdx.app.postRunnable(new Runnable() {
-                        @Override
-                        public void run() {
-                            String detail = error == null ? "desconocido" : error.getMessage();
-                            GameSession.get().onDisconnected("Error WebSocket: " + detail);
-                        }
-                    });
+                    Gdx.app.postRunnable(new Runnable() { @Override public void run() {
+                        String detail = error == null ? "desconocido" : error.getMessage();
+                        GameSession.get().onDisconnected("Error WebSocket: " + detail);
+                    }});
                     return WebSocketListener.FULLY_HANDLED;
                 }
             });
-
-            // La librería no ofrece connectAsync(). connect() abre la conexión y dispara callbacks.
-            // En la práctica es válido llamarlo desde el flujo de pantalla, igual que en los ejemplos de la librería.
             socket.connect();
         } catch (final Exception ex) {
             Gdx.app.error("GameWebSocketClient", "No se pudo iniciar WebSocket", ex);
-            Gdx.app.postRunnable(new Runnable() {
-                @Override
-                public void run() {
-                    GameSession.get().onDisconnected("No se pudo conectar: " + ex.getMessage());
-                }
-            });
+            Gdx.app.postRunnable(new Runnable() { @Override public void run() { GameSession.get().onDisconnected("No se pudo conectar: " + ex.getMessage()); } });
         }
     }
 
-    public boolean isOpen() {
-        return socket != null && socket.isOpen();
-    }
+    public boolean isOpen() { return socket != null && socket.isOpen(); }
 
     public void sendInput(float moveX, boolean jumpPressed, boolean jumpHeld) {
         int mx = moveX < -0.12f ? -1 : (moveX > 0.12f ? 1 : 0);
-        sendRaw("{\"type\":\"INPUT\",\"moveX\":" + mx
-            + ",\"jumpPressed\":" + jumpPressed
-            + ",\"jumpHeld\":" + jumpHeld + "}");
+        sendRaw("{\"type\":\"INPUT\",\"moveX\":" + mx + ",\"jumpPressed\":" + jumpPressed + ",\"jumpHeld\":" + jumpHeld + "}");
     }
 
     public void closeGracefully() {
         try {
-            if (isOpen()) {
-                sendRaw("{\"type\":\"LEAVE\"}");
-            }
+            if (isOpen()) sendRaw("{\"type\":\"LEAVE\"}");
             WebSockets.closeGracefully(socket);
         } catch (Exception ignored) {
         } finally {
@@ -118,13 +87,8 @@ public final class GameWebSocketClient {
     }
 
     private void sendRaw(String json) {
-        try {
-            if (socket != null && socket.isOpen()) {
-                socket.send(json);
-            }
-        } catch (Exception ex) {
-            Gdx.app.error("GameWebSocketClient", "No se pudo enviar: " + json, ex);
-        }
+        try { if (socket != null && socket.isOpen()) socket.send(json); }
+        catch (Exception ex) { Gdx.app.error("GameWebSocketClient", "No se pudo enviar: " + json, ex); }
     }
 
     private void handleTextMessage(String message) {
@@ -136,27 +100,17 @@ public final class GameWebSocketClient {
                 final String id = root.getString("id", "");
                 final String nick = root.getString("nickname", nickname);
                 final int cat = root.getInt("cat", 1);
-                Gdx.app.postRunnable(new Runnable() {
-                    @Override
-                    public void run() {
-                        GameSession.get().onJoinOk(id, nick, cat);
-                    }
-                });
+                Gdx.app.postRunnable(new Runnable() { @Override public void run() { GameSession.get().onJoinOk(id, nick, cat); } });
                 return;
             }
 
             if ("PLAYER_LIST".equals(type) || "STATE".equals(type)) {
                 final List<GameSession.PlayerState> players = parsePlayers(root.get("players"));
                 final GameSession.WorldState world = parseWorld(root.get("world"));
-                Gdx.app.postRunnable(new Runnable() {
-                    @Override
-                    public void run() {
-                        GameSession.get().onPlayerList(players);
-                        if (world != null) {
-                            GameSession.get().onWorldState(world);
-                        }
-                    }
-                });
+                Gdx.app.postRunnable(new Runnable() { @Override public void run() {
+                    GameSession.get().onPlayerList(players);
+                    if (world != null) GameSession.get().onWorldState(world);
+                }});
             }
         } catch (Exception ex) {
             Gdx.app.error("GameWebSocketClient", "Mensaje WS inválido: " + message, ex);
@@ -171,6 +125,7 @@ public final class GameWebSocketClient {
             ps.id = p.getString("id", p.getString("nickname", ""));
             ps.nickname = p.getString("nickname", ps.id);
             ps.cat = p.getInt("cat", 1);
+            ps.level = p.getInt("level", 0);
             ps.x = p.getFloat("x", 40f);
             ps.y = p.getFloat("y", 145f);
             ps.vx = p.getFloat("vx", 0f);
@@ -178,8 +133,11 @@ public final class GameWebSocketClient {
             ps.anim = p.getString("anim", "idle");
             ps.facingRight = p.getBoolean("facingRight", true);
             ps.grounded = p.getBoolean("grounded", false);
+            ps.standingOnPlayer = p.getBoolean("standingOnPlayer", false);
             ps.viewer = p.getBoolean("viewer", false);
             ps.hasPotion = p.getBoolean("hasPotion", false);
+            ps.crossedDoor = p.getBoolean("crossedDoor", false);
+            ps.crossedLevel2 = p.getBoolean("crossedLevel2", false);
             list.add(ps);
         }
         return list;
@@ -188,15 +146,39 @@ public final class GameWebSocketClient {
     private static GameSession.WorldState parseWorld(JsonValue node) {
         if (node == null || !node.isObject()) return null;
         GameSession.WorldState w = new GameSession.WorldState();
+        w.currentLevel = node.getInt("currentLevel", w.currentLevel);
+        w.nextLevelIndex = node.getInt("nextLevelIndex", w.nextLevelIndex);
+        w.levelChangeNonce = node.getInt("levelChangeNonce", w.levelChangeNonce);
+        w.shouldChangeScreen = node.getBoolean("shouldChangeScreen", false);
+        w.changeReason = node.getString("changeReason", "");
         w.potionTaken = node.getBoolean("potionTaken", false);
         w.doorOpen = node.getBoolean("doorOpen", false);
+        w.treeOpening = node.getBoolean("treeOpening", false);
+        w.potionConsumed = node.getBoolean("potionConsumed", false);
         w.potionCarrierId = node.getString("potionCarrierId", "");
+        w.potionKind = node.getString("potionKind", w.potionKind);
         w.potionX = node.getFloat("potionX", w.potionX);
         w.potionY = node.getFloat("potionY", w.potionY);
         w.doorX = node.getFloat("doorX", w.doorX);
         w.doorY = node.getFloat("doorY", w.doorY);
         w.doorWidth = node.getFloat("doorWidth", w.doorWidth);
         w.doorHeight = node.getFloat("doorHeight", w.doorHeight);
+        w.levelUnlocked = node.getBoolean("levelUnlocked", false);
+        w.allPlayersPassed = node.getBoolean("allPlayersPassed", false);
+        w.totalPlayers = node.getInt("totalPlayers", 0);
+        w.passedPlayers = node.getInt("passedPlayers", 0);
+        w.stackReady = node.getBoolean("stackReady", false);
+        w.platformX = node.getFloat("platformX", 0f);
+        w.platformY = node.getFloat("platformY", 0f);
+        w.platformWidth = node.getFloat("platformWidth", 0f);
+        w.platformHeight = node.getFloat("platformHeight", 0f);
+        w.platformActive = node.getBoolean("platformActive", false);
+        w.buttonX = node.getFloat("buttonX", 0f);
+        w.buttonY = node.getFloat("buttonY", 0f);
+        w.buttonWidth = node.getFloat("buttonWidth", 0f);
+        w.buttonHeight = node.getFloat("buttonHeight", 0f);
+        w.buttonVisible = node.getBoolean("buttonVisible", false);
+        w.buttonActive = node.getBoolean("buttonActive", false);
         return w;
     }
 
