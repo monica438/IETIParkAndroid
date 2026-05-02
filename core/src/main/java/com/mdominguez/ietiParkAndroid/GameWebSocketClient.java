@@ -124,12 +124,15 @@ public final class GameWebSocketClient {
             GameSession.PlayerState ps = new GameSession.PlayerState();
             ps.id = p.getString("id", p.getString("nickname", ""));
             ps.nickname = p.getString("nickname", ps.id);
-            ps.cat = p.getInt("cat", 1);
-            ps.level = p.getInt("level", 0);
-            ps.x = p.getFloat("x", 40f);
-            ps.y = p.getFloat("y", 145f);
-            ps.vx = p.getFloat("vx", 0f);
-            ps.vy = p.getFloat("vy", 0f);
+            ps.cat = safeInt(p, "cat", 0);
+            if (ps.cat < 1 || ps.cat > GameSession.MAX_PLAYERS) {
+                continue;
+            }
+            ps.level = safeInt(p, "level", 0);
+            ps.x = safeFloat(p, "x", 40f);
+            ps.y = safeFloat(p, "y", 145f);
+            ps.vx = safeFloat(p, "vx", 0f);
+            ps.vy = safeFloat(p, "vy", 0f);
             ps.anim = p.getString("anim", "idle");
             ps.facingRight = p.getBoolean("facingRight", true);
             ps.grounded = p.getBoolean("grounded", false);
@@ -141,6 +144,28 @@ public final class GameWebSocketClient {
             list.add(ps);
         }
         return list;
+    }
+
+    private static int safeInt(JsonValue json, String key, int fallback) {
+        if (json == null || !json.has(key)) return fallback;
+        try {
+            String value = json.getString(key, "");
+            if (value == null || value.trim().isEmpty()) return fallback;
+            return Integer.parseInt(value.trim());
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private static float safeFloat(JsonValue json, String key, float fallback) {
+        if (json == null || !json.has(key)) return fallback;
+        try {
+            String value = json.getString(key, "");
+            if (value == null || value.trim().isEmpty()) return fallback;
+            return Float.parseFloat(value.trim());
+        } catch (Exception ignored) {
+            return fallback;
+        }
     }
 
     private static GameSession.WorldState parseWorld(JsonValue node) {

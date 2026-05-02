@@ -3,6 +3,7 @@ package com.mdominguez.ietiParkAndroid;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.ScreenAdapter;
 
+
 public class PlayScreen extends ScreenAdapter {
     private final GameApp game;
     private final String nickname;
@@ -50,6 +51,10 @@ public class PlayScreen extends ScreenAdapter {
         }
 
         currentLevelIndex = Math.max(0, levelIndex);
+
+        game.queueReferencedAssetsForLevel(currentLevelIndex);
+        game.getAssetManager().finishLoading();
+
         if (currentLevelIndex == 1) {
             currentLevel = new Level1Screen(game, nickname);
         } else {
