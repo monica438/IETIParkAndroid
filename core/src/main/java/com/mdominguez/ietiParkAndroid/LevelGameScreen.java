@@ -77,10 +77,6 @@ class LevelGameScreen extends ScreenAdapter {
     private int firstPlayerSpriteIndex;
     private int carriedPotionSpriteIndex = -1;
     private int treeSpriteIndex = -1;
-    private int buttonSpriteIndex = -1;
-    private boolean buttonAnimationFinished = false;
-    private float buttonAnimationTime = 0f;
-    private int treeSourceSpriteIndex = -1;
     private boolean treeWasOpening = false;
     private boolean treeAnimationFinished = false;
     private float treeAnimationTime = 0f;
@@ -104,7 +100,6 @@ class LevelGameScreen extends ScreenAdapter {
         hideEditorCats();
         addPlayerSlots();
         addSmallPotionSprite();
-        addLevel2ButtonSprite();
         initializeRuntimeStates();
         viewport.update(Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), false);
         hudViewport.update(Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), true);
@@ -147,6 +142,7 @@ class LevelGameScreen extends ScreenAdapter {
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
         levelRenderer.render(levelData, game.getAssetManager(), batch, camera, spriteRuntimeStates, layerVisibilityStates, layerRuntimeStates);
+        drawGuaranteedWorldObjects(batch, GameSession.get().snapshotWorld(), GameSession.get().snapshotPlayers());
         drawPotionOverCarrier(batch);
         batch.end();
         renderLevel2DynamicObjects();
@@ -177,168 +173,183 @@ class LevelGameScreen extends ScreenAdapter {
             applyAnimation(slotIndex, animName, dt);
         }
 
-        // 2) Pintamos el mundo: árbol fijo, poción y botón/plataforma del nivel 1.
+        // 2) Pintamos el mundo: árbol fijo y poción en el suelo o sobre su portador.
         applyPotionAndTree(world, players);
-        applyLevel2ButtonVisual(world);
     }
 
     private void applyPotionAndTree(GameSession.WorldState world, List<GameSession.PlayerState> players) {
         if (world == null) return;
 
-        // La poción grande del suelo solo se ve si está disponible.
-        // Si alguien la lleva, se oculta aquí y se dibuja pequeña sobre el gato en drawPotionOverCarrier().
+        // Buscamos los sprites reales del JSON cada frame por seguridad.
+        // Así no dependemos de nombres antiguos ni de posiciones del servidor.
+        int potionIndex = findPotionSpriteIndex();
+        treeSpriteIndex = findTreeSpriteIndex();
+
         boolean potionOnFloor = !world.potionTaken && !world.potionConsumed && findPotionCarrier(world, players) == null;
 
-        for (int i = 0; i < levelData.sprites.size && i < spriteRuntimeStates.size; i++) {
-            LevelData.LevelSprite sprite = levelData.sprites.get(i);
-            String text = spriteSearchText(sprite);
-            LevelRenderer.SpriteRuntimeState state = spriteRuntimeStates.get(i);
-
-            if (isPotionSprite(text) && i != carriedPotionSpriteIndex && i != buttonSpriteIndex) {
-                state.visible = potionOnFloor;
-                if (potionOnFloor) {
-                    state.worldX = world.potionX;
-                    state.worldY = world.potionY;
-                    applyWorldAnimation(i, potionAnimationNames(), Gdx.graphics.getDeltaTime(), POTION_FLOOR_SIZE, POTION_FLOOR_SIZE);
-                }
-            }
-
-            if (isTreeSprite(text)) {
-                treeSpriteIndex = i;
-                treeSourceSpriteIndex = i;
-            }
+        if (potionIndex >= 0 && potionIndex < spriteRuntimeStates.size) {
+            // Ocultamos el sprite original porque lo dibujamos manualmente con el tamaño correcto.
+            spriteRuntimeStates.get(potionIndex).visible = false;
         }
 
-        updateTreeAnimation(world);
+        if (treeSpriteIndex >= 0 && treeSpriteIndex < spriteRuntimeStates.size) {
+            // Ocultamos el sprite original y lo dibujamos manualmente encima del mapa.
+            // Esto evita que una mala detección del renderer deje el árbol invisible.
+            spriteRuntimeStates.get(treeSpriteIndex).visible = false;
+        }
 
         if (carriedPotionSpriteIndex >= 0 && carriedPotionSpriteIndex < spriteRuntimeStates.size) {
             spriteRuntimeStates.get(carriedPotionSpriteIndex).visible = false;
         }
+
+        // Mantiene contadores de animación coherentes aunque el dibujo manual sea el que manda.
+        if (potionOnFloor && potionIndex >= 0) {
+            animationElapsed.set(potionIndex, animationElapsed.get(potionIndex) + Gdx.graphics.getDeltaTime());
+        }
+        if (treeSpriteIndex >= 0) {
+            updateTreeAnimationStateOnly(world, treeSpriteIndex);
+        }
     }
 
-    private void updateTreeAnimation(GameSession.WorldState world) {
-        if (treeSpriteIndex < 0 || treeSpriteIndex >= spriteRuntimeStates.size) return;
-
-        LevelRenderer.SpriteRuntimeState state = spriteRuntimeStates.get(treeSpriteIndex);
-        state.visible = true;
-        state.worldX = world.doorX + world.doorWidth * 0.5f;
-        state.worldY = world.doorY + world.doorHeight * 0.5f;
-
+    private void updateTreeAnimationStateOnly(GameSession.WorldState world, int spriteIndex) {
         if (world.doorOpen) {
             if (!treeWasOpening) {
                 treeWasOpening = true;
                 treeAnimationFinished = false;
                 treeAnimationTime = 0f;
-                animationElapsed.set(treeSpriteIndex, 0f);
             }
-            playTreeAliveOnce(treeSpriteIndex);
         } else {
             treeWasOpening = false;
             treeAnimationFinished = false;
             treeAnimationTime = 0f;
-            applyWorldAnimation(treeSpriteIndex, treeDeadAnimationNames(), Gdx.graphics.getDeltaTime(), TREE_DRAW_SIZE, TREE_DRAW_SIZE);
         }
     }
 
-    private void playTreeAliveOnce(int spriteIndex) {
-        String id = findAnimationId(treeAliveAnimationNames());
-        if (id == null) {
-            // Si no se encuentra la animación de curación, mantenemos visible el árbol al tamaño correcto.
-            LevelRenderer.SpriteRuntimeState fallback = spriteRuntimeStates.get(spriteIndex);
-            fallback.visible = true;
-            fallback.drawWidth = TREE_DRAW_SIZE;
-            fallback.drawHeight = TREE_DRAW_SIZE;
+    private void drawGuaranteedWorldObjects(SpriteBatch batch, GameSession.WorldState world, List<GameSession.PlayerState> players) {
+        if (world == null) return;
+
+        int treeIndex = findTreeSpriteIndex();
+        if (treeIndex >= 0) {
+            if (world.doorOpen) {
+                drawTreeAliveOnce(batch, treeIndex);
+            } else {
+                drawAnimatedSprite(batch, treeIndex, levelData.sprites.get(treeIndex).animationId, TREE_DRAW_SIZE, TREE_DRAW_SIZE, true, -1);
+            }
+        }
+
+        GameSession.PlayerState carrier = findPotionCarrier(world, players);
+        boolean potionOnFloor = !world.potionTaken && !world.potionConsumed && carrier == null;
+        if (potionOnFloor) {
+            int potionIndex = findPotionSpriteIndex();
+            if (potionIndex >= 0) {
+                LevelData.LevelSprite potionSprite = levelData.sprites.get(potionIndex);
+                drawAnimatedSprite(batch, potionIndex, potionSprite.animationId, POTION_FLOOR_SIZE, POTION_FLOOR_SIZE, true, -1);
+            }
+        }
+    }
+
+    private void drawTreeAliveOnce(SpriteBatch batch, int spriteIndex) {
+        String aliveId = findAnimationIdByAnyName("tree_alive", "tree_alive1");
+        if (aliveId == null) {
+            // Si por algún motivo no se ha cargado la animación de curación, dejamos el árbol muerto visible.
+            drawAnimatedSprite(batch, spriteIndex, levelData.sprites.get(spriteIndex).animationId, TREE_DRAW_SIZE, TREE_DRAW_SIZE, true, -1);
             return;
         }
 
-        LevelData.AnimationClip clip = levelData.animationClips.get(id);
+        LevelData.AnimationClip clip = levelData.animationClips.get(aliveId);
         if (clip == null) return;
 
-        LevelRenderer.SpriteRuntimeState state = spriteRuntimeStates.get(spriteIndex);
-        state.visible = true;
-        state.animationId = id;
-        state.texturePath = clip.texturePath;
-        state.frameWidth = clip.frameWidth;
-        state.frameHeight = clip.frameHeight;
-        state.drawWidth = TREE_DRAW_SIZE;
-        state.drawHeight = TREE_DRAW_SIZE;
-        state.anchorX = 0.5f;
-        state.anchorY = 0.5f;
-
-        int total = totalFrames(state.texturePath, state.frameWidth, state.frameHeight);
+        int total = totalFrames(clip.texturePath, clip.frameWidth, clip.frameHeight);
         int start = Math.max(0, Math.min(total - 1, clip.startFrame));
         int end = Math.max(start, Math.min(total - 1, clip.endFrame));
 
         if (!treeAnimationFinished) {
             treeAnimationTime += Gdx.graphics.getDeltaTime();
-            int frameOffset = (int)(treeAnimationTime * TREE_ALIVE_FPS);
-            int frame = start + frameOffset;
+            int frame = start + (int)(treeAnimationTime * TREE_ALIVE_FPS);
             if (frame >= end) {
                 frame = end;
                 treeAnimationFinished = true;
             }
-            state.frameIndex = frame;
+            drawAnimatedSprite(batch, spriteIndex, aliveId, TREE_DRAW_SIZE, TREE_DRAW_SIZE, false, frame);
         } else {
-            state.frameIndex = end;
+            drawAnimatedSprite(batch, spriteIndex, aliveId, TREE_DRAW_SIZE, TREE_DRAW_SIZE, false, end);
         }
     }
 
-    private void applyLevel2ButtonVisual(GameSession.WorldState world) {
-        if (levelIndex != 1 || world == null || buttonSpriteIndex < 0 || buttonSpriteIndex >= spriteRuntimeStates.size) return;
+    private void drawAnimatedSprite(SpriteBatch batch, int spriteIndex, String animationId, float drawWidth, float drawHeight, boolean loop, int forcedFrame) {
+        if (spriteIndex < 0 || spriteIndex >= levelData.sprites.size) return;
+        LevelData.LevelSprite sprite = levelData.sprites.get(spriteIndex);
 
-        LevelRenderer.SpriteRuntimeState state = spriteRuntimeStates.get(buttonSpriteIndex);
-        state.visible = world.buttonVisible;
-        if (!world.buttonVisible) return;
+        LevelData.AnimationClip clip = animationId == null ? null : levelData.animationClips.get(animationId);
+        String texturePath = clip == null ? sprite.texturePath : clip.texturePath;
+        if (texturePath == null || !game.getAssetManager().isLoaded(texturePath, Texture.class)) return;
 
-        state.worldX = world.buttonX + world.buttonWidth * 0.5f;
-        state.worldY = world.buttonY + world.buttonHeight * 0.5f;
+        Texture texture = game.getAssetManager().get(texturePath, Texture.class);
+        int frameW = clip == null ? Math.max(1, Math.round(sprite.width)) : Math.max(1, clip.frameWidth);
+        int frameH = clip == null ? Math.max(1, Math.round(sprite.height)) : Math.max(1, clip.frameHeight);
+        int cols = Math.max(1, texture.getWidth() / frameW);
+        int rows = Math.max(1, texture.getHeight() / frameH);
+        int total = Math.max(1, cols * rows);
 
-        float size = Math.max(24f, Math.max(world.buttonWidth, world.buttonHeight));
-        if (world.buttonActive) {
-            playButtonPressedOnce(buttonSpriteIndex, size);
+        int start = clip == null ? 0 : Math.max(0, Math.min(total - 1, clip.startFrame));
+        int end = clip == null ? total - 1 : Math.max(start, Math.min(total - 1, clip.endFrame));
+        int span = Math.max(1, end - start + 1);
+
+        int frame;
+        if (forcedFrame >= 0) {
+            frame = Math.max(start, Math.min(end, forcedFrame));
         } else {
-            buttonAnimationFinished = false;
-            buttonAnimationTime = 0f;
-            applyWorldAnimation(buttonSpriteIndex, buttonIdleAnimationNames(), Gdx.graphics.getDeltaTime(), size, size);
+            float elapsed = animationElapsed.get(spriteIndex) + Gdx.graphics.getDeltaTime();
+            animationElapsed.set(spriteIndex, elapsed);
+            float fps = clip == null ? 10f : Math.max(1f, clip.fps);
+            frame = loop ? start + ((int)(elapsed * fps) % span) : Math.min(end, start + (int)(elapsed * fps));
         }
+
+        TextureRegion region = new TextureRegion(
+            texture,
+            (frame % cols) * frameW,
+            (frame / cols) * frameH,
+            frameW,
+            frameH
+        );
+
+        float anchorX = clip == null ? sprite.anchorX : clip.anchorX;
+        float anchorY = clip == null ? sprite.anchorY : clip.anchorY;
+        float leftDown = sprite.x - drawWidth * anchorX;
+        float topDown = sprite.y - drawHeight * anchorY;
+        float x = leftDown;
+        float y = levelData.worldHeight - topDown - drawHeight;
+        batch.draw(region, x, y, drawWidth, drawHeight);
     }
 
-    private void playButtonPressedOnce(int spriteIndex, float drawSize) {
-        String id = findAnimationId(buttonPressedAnimationNames());
-        if (id == null) {
-            applyWorldAnimation(spriteIndex, buttonIdleAnimationNames(), Gdx.graphics.getDeltaTime(), drawSize, drawSize);
-            return;
-        }
-
-        LevelData.AnimationClip clip = levelData.animationClips.get(id);
-        if (clip == null) return;
-
-        LevelRenderer.SpriteRuntimeState state = spriteRuntimeStates.get(spriteIndex);
-        state.visible = true;
-        state.animationId = id;
-        state.texturePath = clip.texturePath;
-        state.frameWidth = clip.frameWidth;
-        state.frameHeight = clip.frameHeight;
-        state.drawWidth = drawSize;
-        state.drawHeight = drawSize;
-        state.anchorX = 0.5f;
-        state.anchorY = 0.5f;
-
-        int total = totalFrames(state.texturePath, state.frameWidth, state.frameHeight);
-        int start = Math.max(0, Math.min(total - 1, clip.startFrame));
-        int end = Math.max(start, Math.min(total - 1, clip.endFrame));
-
-        if (!buttonAnimationFinished) {
-            buttonAnimationTime += Gdx.graphics.getDeltaTime();
-            int frame = start + (int)(buttonAnimationTime * Math.max(1f, clip.fps));
-            if (frame >= end) {
-                frame = end;
-                buttonAnimationFinished = true;
+    private int findTreeSpriteIndex() {
+        for (int i = 0; i < levelData.sprites.size; i++) {
+            LevelData.LevelSprite s = levelData.sprites.get(i);
+            String text = normalize(s.name + " " + s.type + " " + s.texturePath + " " + s.animationId);
+            if (text.contains("dead_tree") || text.contains("tree_die") || text.contains("tree_died") || text.contains("tree_alive") || text.contains("arbre")) {
+                return i;
             }
-            state.frameIndex = frame;
-        } else {
-            state.frameIndex = end;
         }
+        return -1;
+    }
+
+    private int findPotionSpriteIndex() {
+        for (int i = 0; i < levelData.sprites.size; i++) {
+            LevelData.LevelSprite s = levelData.sprites.get(i);
+            String text = normalize(s.name + " " + s.type + " " + s.texturePath + " " + s.animationId);
+            if (!text.contains("carried") && (text.contains("potion") || text.contains("icon1(2)(2)") || text.contains("icon7(2)"))) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private String findAnimationIdByAnyName(String... names) {
+        for (String name : names) {
+            String id = animationIdByName.get(normalize(name));
+            if (id != null) return id;
+        }
+        return null;
     }
 
     private GameSession.PlayerState findPotionCarrier(GameSession.WorldState world, List<GameSession.PlayerState> players) {
@@ -377,33 +388,27 @@ class LevelGameScreen extends ScreenAdapter {
     }
 
     private void applyWorldAnimation(int spriteIndex, String animationName, float dt, float drawWidth, float drawHeight) {
-        applyWorldAnimation(spriteIndex, new String[] { animationName }, dt, drawWidth, drawHeight);
-    }
-
-    private void applyWorldAnimation(int spriteIndex, String[] animationNames, float dt, float drawWidth, float drawHeight) {
+        String id = animationIdByName.get(normalize(animationName));
         if (spriteIndex < 0 || spriteIndex >= spriteRuntimeStates.size) return;
-
-        String id = findAnimationId(animationNames);
-        LevelRenderer.SpriteRuntimeState state = spriteRuntimeStates.get(spriteIndex);
-        state.visible = true;
-        state.drawWidth = drawWidth;
-        state.drawHeight = drawHeight;
-
         if (id == null) {
+            LevelRenderer.SpriteRuntimeState state = spriteRuntimeStates.get(spriteIndex);
+            state.drawWidth = drawWidth;
+            state.drawHeight = drawHeight;
             return;
         }
 
         LevelData.AnimationClip clip = levelData.animationClips.get(id);
         if (clip == null) return;
 
+        LevelRenderer.SpriteRuntimeState state = spriteRuntimeStates.get(spriteIndex);
         state.animationId = id;
         state.texturePath = clip.texturePath;
         state.frameWidth = clip.frameWidth;
         state.frameHeight = clip.frameHeight;
         state.drawWidth = drawWidth;
         state.drawHeight = drawHeight;
-        state.anchorX = 0.5f;
-        state.anchorY = 0.5f;
+        state.anchorX = clip.anchorX;
+        state.anchorY = clip.anchorY;
 
         float elapsed = animationElapsed.get(spriteIndex) + dt;
         animationElapsed.set(spriteIndex, elapsed);
@@ -518,7 +523,11 @@ class LevelGameScreen extends ScreenAdapter {
             float y = levelData.worldHeight - world.platformY - world.platformHeight;
             shapes.rect(world.platformX, y, world.platformWidth, world.platformHeight);
         }
-        // El botón se dibuja como sprite animado en applyLevel2ButtonVisual().
+        if (world.buttonVisible && world.buttonWidth > 0f && world.buttonHeight > 0f) {
+            shapes.setColor(world.buttonActive ? Color.valueOf("35FF74DD") : Color.valueOf("FFCC33DD"));
+            float y = levelData.worldHeight - world.buttonY - world.buttonHeight;
+            shapes.rect(world.buttonX, y, world.buttonWidth, world.buttonHeight);
+        }
         shapes.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
     }
@@ -559,16 +568,10 @@ class LevelGameScreen extends ScreenAdapter {
     }
 
     private String findPotionTexturePath() {
-        String id = findAnimationId(potionAnimationNames());
-        if (id != null) {
-            LevelData.AnimationClip clip = levelData.animationClips.get(id);
-            if (clip != null && clip.texturePath != null) return clip.texturePath;
-        }
-
         for (int i = 0; i < levelData.sprites.size; i++) {
             LevelData.LevelSprite s = levelData.sprites.get(i);
-            String text = spriteSearchText(s);
-            if (isPotionSprite(text) && !text.contains("carried")) return s.texturePath;
+            String type = normalize(s.type + " " + s.name);
+            if (type.contains("potion") && !type.contains("carried")) return s.texturePath;
         }
         return null;
     }
@@ -612,8 +615,8 @@ class LevelGameScreen extends ScreenAdapter {
     private void addSmallPotionSprite() {
         for (int i = 0; i < levelData.sprites.size; i++) {
             LevelData.LevelSprite s = levelData.sprites.get(i);
-            String text = spriteSearchText(s);
-            if (isPotionSprite(text)) {
+            String type = normalize(s.type + " " + s.name);
+            if (type.contains("potion")) {
                 carriedPotionSpriteIndex = levelData.sprites.size;
                 levelData.sprites.add(new LevelData.LevelSprite(
                     "potion_carried",
@@ -636,43 +639,6 @@ class LevelGameScreen extends ScreenAdapter {
         }
     }
 
-    private void addLevel2ButtonSprite() {
-        if (levelIndex != 1) return;
-
-        String id = findAnimationId(buttonIdleAnimationNames());
-        LevelData.AnimationClip clip = id == null ? null : levelData.animationClips.get(id);
-
-        // Si el botón ya existe en el JSON, usamos ese sprite.
-        for (int i = 0; i < levelData.sprites.size; i++) {
-            LevelData.LevelSprite s = levelData.sprites.get(i);
-            String text = spriteSearchText(s);
-            if (isButtonSprite(text)) {
-                buttonSpriteIndex = i;
-                return;
-            }
-        }
-
-        // Si no existe como sprite de editor, lo creamos dinámicamente a partir de la animación static_button / Icon7(6).
-        if (clip == null) return;
-        buttonSpriteIndex = levelData.sprites.size;
-        levelData.sprites.add(new LevelData.LevelSprite(
-            "level2_button",
-            "button",
-            0f,
-            -200,
-            -200,
-            24f,
-            24f,
-            0.5f,
-            0.5f,
-            false,
-            false,
-            clip.startFrame,
-            clip.texturePath,
-            clip.id
-        ));
-    }
-
     private void initializeRuntimeStates() {
         spriteRuntimeStates.clear(); animationElapsed.clear();
         for (int i = 0; i < levelData.sprites.size; i++) {
@@ -687,91 +653,6 @@ class LevelGameScreen extends ScreenAdapter {
         }
         layerRuntimeStates.clear();
         for (int i = 0; i < levelData.layers.size; i++) layerRuntimeStates.add(new RuntimeTransform(levelData.layers.get(i).x, levelData.layers.get(i).y));
-    }
-
-    private String[] potionAnimationNames() {
-        if (levelIndex == 1) {
-            return new String[] { "Icon7(2)", "icon7(2)", "potion_green", "potiongreen", "green" };
-        }
-        return new String[] { "Icon1(2)(2)", "icon1(2)(2)", "potion_red", "potionred", "red" };
-    }
-
-    private String[] treeDeadAnimationNames() {
-        return new String[] { "tree_die1", "tree_died", "tree_die", "dead_tree", "tree_roñoso", "tree" };
-    }
-
-    private String[] treeAliveAnimationNames() {
-        return new String[] { "tree_alive1", "tree_alive", "tree_alive_1", "tree_2" };
-    }
-
-    private String[] buttonIdleAnimationNames() {
-        return new String[] { "Icon7(6)", "icon7(6)", "static_button", "button_static" };
-    }
-
-    private String[] buttonPressedAnimationNames() {
-        return new String[] { "Icon7(5)", "icon7(5)", "button", "button_pressed" };
-    }
-
-    private String findAnimationId(String... names) {
-        if (names == null) return null;
-
-        for (String name : names) {
-            String direct = animationIdByName.get(normalize(name));
-            if (direct != null) return direct;
-        }
-
-        // Segunda pasada: permite que coincida por nombre o por fichero del spritesheet.
-        for (ObjectMap.Entry<String, LevelData.AnimationClip> e : levelData.animationClips) {
-            LevelData.AnimationClip clip = e.value;
-            if (clip == null) continue;
-            String text = normalize(clip.name + " " + clip.texturePath);
-            String looseText = normalizeLoose(text);
-            for (String name : names) {
-                String n = normalize(name);
-                if (n.length() == 0) continue;
-                if (text.contains(n) || looseText.contains(normalizeLoose(n))) {
-                    return clip.id;
-                }
-            }
-        }
-        return null;
-    }
-
-    private String spriteSearchText(LevelData.LevelSprite sprite) {
-        if (sprite == null) return "";
-        String animName = "";
-        if (sprite.animationId != null) {
-            LevelData.AnimationClip clip = levelData.animationClips.get(sprite.animationId);
-            if (clip != null) animName = clip.name + " " + clip.texturePath;
-        }
-        return normalize(sprite.type + " " + sprite.name + " " + sprite.texturePath + " " + animName);
-    }
-
-    private boolean isPotionSprite(String text) {
-        String loose = normalizeLoose(text);
-        if (text.contains("potion")) return true;
-        if (levelIndex == 1) return loose.contains("icon72") || loose.contains("icon7");
-        return loose.contains("icon122") || loose.contains("icon1") || text.contains("red");
-    }
-
-    private boolean isTreeSprite(String text) {
-        return text.contains("tree") || text.contains("arbre") || text.contains("dead_tree") || text.contains("die1");
-    }
-
-    private boolean isButtonSprite(String text) {
-        String loose = normalizeLoose(text);
-        return text.contains("button") || text.contains("boton") || loose.contains("icon76") || text.contains("static_button");
-    }
-
-    private String normalizeLoose(String v) {
-        if (v == null) return "";
-        String normalized = normalize(v);
-        StringBuilder sb = new StringBuilder(normalized.length());
-        for (int i = 0; i < normalized.length(); i++) {
-            char c = normalized.charAt(i);
-            if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) sb.append(c);
-        }
-        return sb.toString();
     }
 
     private boolean[] buildInitialLayerVisibility(LevelData level) {

@@ -148,6 +148,10 @@ public final class GameSession {
         if (client != null && connected) client.sendInput(moveX, jumpPressed, jumpHeld);
     }
 
+    public synchronized void sendClientEvent(String event, int level, float x, float y) {
+        if (client != null && connected) client.sendClientEvent(event, level, x, y);
+    }
+
     synchronized void onConnected() {
         connected = true;
         status = "Conectado. Esperando JOIN_OK...";

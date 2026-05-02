@@ -3,7 +3,6 @@ package com.mdominguez.ietiParkAndroid;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.ScreenAdapter;
 
-
 public class PlayScreen extends ScreenAdapter {
     private final GameApp game;
     private final String nickname;
@@ -20,27 +19,15 @@ public class PlayScreen extends ScreenAdapter {
         this.currentLevelIndex = Math.max(0, levelIndex);
     }
 
-    @Override
-    public void show() {
-        openLevel(currentLevelIndex);
-    }
+    @Override public void show() { openLevel(currentLevelIndex); }
 
-    @Override
-    public void render(float delta) {
-        if (currentLevel == null) {
-            openLevel(currentLevelIndex);
-        }
+    @Override public void render(float delta) {
+        if (currentLevel == null) openLevel(currentLevelIndex);
+        if (currentLevel != null) currentLevel.render(delta);
 
-        if (currentLevel != null) {
-            currentLevel.render(delta);
-        }
-
-        // El servidor usa shouldChangeScreen / nextLevelIndex para decir cuándo pasar al siguiente nivel.
         if (GameSession.get().consumeLevelChangeTo(currentLevelIndex)) {
-            int nextLevel = GameSession.get().getNextLevelIndex();
-            if (nextLevel >= 0 && nextLevel != currentLevelIndex) {
-                openLevel(nextLevel);
-            }
+            int next = GameSession.get().getNextLevelIndex();
+            if (next >= 0 && next != currentLevelIndex) openLevel(next);
         }
     }
 
@@ -51,13 +38,11 @@ public class PlayScreen extends ScreenAdapter {
         }
 
         currentLevelIndex = Math.max(0, levelIndex);
-
         game.queueReferencedAssetsForLevel(currentLevelIndex);
         game.getAssetManager().finishLoading();
 
-        if (currentLevelIndex == 1) {
-            currentLevel = new Level1Screen(game, nickname);
-        } else {
+        if (currentLevelIndex == 1) currentLevel = new Level1Screen(game, nickname);
+        else {
             currentLevelIndex = 0;
             currentLevel = new Level0Screen(game, nickname);
         }
@@ -65,31 +50,9 @@ public class PlayScreen extends ScreenAdapter {
         currentLevel.resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
     }
 
-    @Override
-    public void resize(int width, int height) {
-        if (currentLevel != null) currentLevel.resize(width, height);
-    }
-
-    @Override
-    public void pause() {
-        if (currentLevel != null) currentLevel.pause();
-    }
-
-    @Override
-    public void resume() {
-        if (currentLevel != null) currentLevel.resume();
-    }
-
-    @Override
-    public void hide() {
-        if (currentLevel != null) currentLevel.hide();
-    }
-
-    @Override
-    public void dispose() {
-        if (currentLevel != null) {
-            currentLevel.dispose();
-            currentLevel = null;
-        }
-    }
+    @Override public void resize(int width, int height) { if (currentLevel != null) currentLevel.resize(width, height); }
+    @Override public void pause() { if (currentLevel != null) currentLevel.pause(); }
+    @Override public void resume() { if (currentLevel != null) currentLevel.resume(); }
+    @Override public void hide() { if (currentLevel != null) currentLevel.hide(); }
+    @Override public void dispose() { if (currentLevel != null) { currentLevel.dispose(); currentLevel = null; } }
 }

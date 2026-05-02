@@ -76,6 +76,44 @@ public final class GameWebSocketClient {
         sendRaw("{\"type\":\"INPUT\",\"moveX\":" + mx + ",\"jumpPressed\":" + jumpPressed + ",\"jumpHeld\":" + jumpHeld + "}");
     }
 
+    public void sendClientState(int level, float x, float y, float vx, float vy,
+                                String anim, boolean facingRight,
+                                boolean grounded, boolean standingOnPlayer) {
+        sendRaw("{"
+            + "\"type\":\"CLIENT_STATE\","
+            + "\"level\":" + level + ","
+            + "\"x\":" + x + ","
+            + "\"y\":" + y + ","
+            + "\"vx\":" + vx + ","
+            + "\"vy\":" + vy + ","
+            + "\"anim\":\"" + escape(anim == null ? "idle" : anim) + "\","
+            + "\"facingRight\":" + facingRight + ","
+            + "\"grounded\":" + grounded + ","
+            + "\"standingOnPlayer\":" + standingOnPlayer
+            + "}");
+    }
+
+    public void sendClientEvent(String event, int level, float x, float y) {
+        sendRaw("{"
+            + "\"type\":\"CLIENT_EVENT\","
+            + "\"event\":\"" + escape(event == null ? "" : event) + "\","
+            + "\"level\":" + level + ","
+            + "\"x\":" + x + ","
+            + "\"y\":" + y
+            + "}");
+    }
+
+    private static int safeInt(JsonValue json, String key, int fallback) {
+        if (json == null || !json.has(key)) return fallback;
+        try {
+            String value = json.getString(key, String.valueOf(fallback));
+            if (value == null || value.trim().isEmpty()) return fallback;
+            return Integer.parseInt(value.trim());
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
     public void closeGracefully() {
         try {
             if (isOpen()) sendRaw("{\"type\":\"LEAVE\"}");
@@ -99,7 +137,7 @@ public final class GameWebSocketClient {
             if ("JOIN_OK".equals(type)) {
                 final String id = root.getString("id", "");
                 final String nick = root.getString("nickname", nickname);
-                final int cat = root.getInt("cat", 1);
+                final int cat = safeInt(root, "cat", 1);
                 Gdx.app.postRunnable(new Runnable() { @Override public void run() { GameSession.get().onJoinOk(id, nick, cat); } });
                 return;
             }
@@ -124,15 +162,12 @@ public final class GameWebSocketClient {
             GameSession.PlayerState ps = new GameSession.PlayerState();
             ps.id = p.getString("id", p.getString("nickname", ""));
             ps.nickname = p.getString("nickname", ps.id);
-            ps.cat = safeInt(p, "cat", 0);
-            if (ps.cat < 1 || ps.cat > GameSession.MAX_PLAYERS) {
-                continue;
-            }
-            ps.level = safeInt(p, "level", 0);
-            ps.x = safeFloat(p, "x", 40f);
-            ps.y = safeFloat(p, "y", 145f);
-            ps.vx = safeFloat(p, "vx", 0f);
-            ps.vy = safeFloat(p, "vy", 0f);
+            ps.cat = safeInt(p, "cat", 1);
+            ps.level = p.getInt("level", 0);
+            ps.x = p.getFloat("x", 40f);
+            ps.y = p.getFloat("y", 145f);
+            ps.vx = p.getFloat("vx", 0f);
+            ps.vy = p.getFloat("vy", 0f);
             ps.anim = p.getString("anim", "idle");
             ps.facingRight = p.getBoolean("facingRight", true);
             ps.grounded = p.getBoolean("grounded", false);
@@ -144,28 +179,6 @@ public final class GameWebSocketClient {
             list.add(ps);
         }
         return list;
-    }
-
-    private static int safeInt(JsonValue json, String key, int fallback) {
-        if (json == null || !json.has(key)) return fallback;
-        try {
-            String value = json.getString(key, "");
-            if (value == null || value.trim().isEmpty()) return fallback;
-            return Integer.parseInt(value.trim());
-        } catch (Exception ignored) {
-            return fallback;
-        }
-    }
-
-    private static float safeFloat(JsonValue json, String key, float fallback) {
-        if (json == null || !json.has(key)) return fallback;
-        try {
-            String value = json.getString(key, "");
-            if (value == null || value.trim().isEmpty()) return fallback;
-            return Float.parseFloat(value.trim());
-        } catch (Exception ignored) {
-            return fallback;
-        }
     }
 
     private static GameSession.WorldState parseWorld(JsonValue node) {
