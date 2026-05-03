@@ -10,14 +10,6 @@ import com.github.czyzby.websocket.WebSockets;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Cliente WebSocket adaptado a:
- * implementation "com.github.MrStahlfelge.gdx-websockets:core:$wsVersion"
- * wsVersion = '1.9.10.3'
- *
- * Importante: en AndroidLauncher/DesktopLauncher hay que llamar a CommonWebSockets.initiate()
- * antes de crear el juego.
- */
 public final class GameWebSocketClient {
     private final String url;
     private final String nickname;
@@ -198,6 +190,7 @@ public final class GameWebSocketClient {
             ps.grounded = p.getBoolean("grounded", false);
             ps.viewer = p.getBoolean("viewer", false);
             ps.hasPotion = p.getBoolean("hasPotion", false);
+            ps.crossedDoor = p.getBoolean("crossedDoor", false);
             list.add(ps);
         }
         return list;
@@ -208,6 +201,8 @@ public final class GameWebSocketClient {
         GameSession.WorldState w = new GameSession.WorldState();
         w.potionTaken = node.getBoolean("potionTaken", false);
         w.doorOpen = node.getBoolean("doorOpen", false);
+        w.treeOpening = node.getBoolean("treeOpening", false);
+        w.potionConsumed = node.getBoolean("potionConsumed", false);
         w.potionCarrierId = node.getString("potionCarrierId", "");
         w.potionX = node.getFloat("potionX", w.potionX);
         w.potionY = node.getFloat("potionY", w.potionY);
@@ -215,6 +210,12 @@ public final class GameWebSocketClient {
         w.doorY = node.getFloat("doorY", w.doorY);
         w.doorWidth = node.getFloat("doorWidth", w.doorWidth);
         w.doorHeight = node.getFloat("doorHeight", w.doorHeight);
+        w.levelUnlocked = node.getBoolean("levelUnlocked", false);
+        w.allPlayersPassed = node.getBoolean("allPlayersPassed", false);
+        w.shouldChangeScreen = node.getBoolean("shouldChangeScreen", false);
+        w.totalPlayers = node.getInt("totalPlayers", 0);
+        w.passedPlayers = node.getInt("passedPlayers", 0);
+        w.changeReason = node.getString("changeReason", "");
         return w;
     }
 

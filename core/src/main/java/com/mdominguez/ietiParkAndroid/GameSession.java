@@ -26,6 +26,7 @@ public final class GameSession {
         public boolean grounded;
         public boolean viewer;
         public boolean hasPotion;
+        public boolean crossedDoor;
 
         public PlayerState copy() {
             PlayerState p = new PlayerState();
@@ -41,6 +42,7 @@ public final class GameSession {
             p.grounded = grounded;
             p.viewer = viewer;
             p.hasPotion = hasPotion;
+            p.crossedDoor = crossedDoor;
             return p;
         }
     }
@@ -48,13 +50,21 @@ public final class GameSession {
     public static final class WorldState {
         public boolean potionTaken;
         public boolean doorOpen;
+        public boolean treeOpening;
+        public boolean potionConsumed;
         public String potionCarrierId = "";
         public float potionX = 157f;
-        public float potionY = 160f;
+        public float potionY = 145f;
         public float doorX = 262f;
         public float doorY = 153f;
         public float doorWidth = 48f;
         public float doorHeight = 80f;
+        public boolean levelUnlocked;
+        public boolean allPlayersPassed;
+        public boolean shouldChangeScreen;
+        public int totalPlayers;
+        public int passedPlayers;
+        public String changeReason = "";
     }
 
     private final LinkedHashMap<String, PlayerState> players = new LinkedHashMap<>();
@@ -155,6 +165,8 @@ public final class GameSession {
         if (ws == null) return;
         world.potionTaken = ws.potionTaken;
         world.doorOpen = ws.doorOpen;
+        world.treeOpening = ws.treeOpening;
+        world.potionConsumed = ws.potionConsumed;
         world.potionCarrierId = ws.potionCarrierId == null ? "" : ws.potionCarrierId;
         world.potionX = ws.potionX;
         world.potionY = ws.potionY;
@@ -162,6 +174,12 @@ public final class GameSession {
         world.doorY = ws.doorY;
         world.doorWidth = ws.doorWidth;
         world.doorHeight = ws.doorHeight;
+        world.levelUnlocked = ws.levelUnlocked;
+        world.allPlayersPassed = ws.allPlayersPassed;
+        world.shouldChangeScreen = ws.shouldChangeScreen;
+        world.totalPlayers = ws.totalPlayers;
+        world.passedPlayers = ws.passedPlayers;
+        world.changeReason = ws.changeReason == null ? "" : ws.changeReason;
     }
 
     public synchronized List<PlayerState> snapshotPlayers() {
@@ -172,10 +190,19 @@ public final class GameSession {
         return copy;
     }
 
+    public synchronized boolean shouldChangeScreen() { return world.shouldChangeScreen; }
+    public synchronized boolean isLevelUnlocked() { return world.levelUnlocked; }
+    public synchronized boolean haveAllPlayersPassedDoor() { return world.allPlayersPassed; }
+    public synchronized int getPassedPlayersCount() { return world.passedPlayers; }
+    public synchronized int getTotalPlayersInLevel() { return world.totalPlayers; }
+    public synchronized String getChangeReason() { return world.changeReason; }
+
     public synchronized WorldState snapshotWorld() {
         WorldState w = new WorldState();
         w.potionTaken = world.potionTaken;
         w.doorOpen = world.doorOpen;
+        w.treeOpening = world.treeOpening;
+        w.potionConsumed = world.potionConsumed;
         w.potionCarrierId = world.potionCarrierId;
         w.potionX = world.potionX;
         w.potionY = world.potionY;
@@ -183,6 +210,12 @@ public final class GameSession {
         w.doorY = world.doorY;
         w.doorWidth = world.doorWidth;
         w.doorHeight = world.doorHeight;
+        w.levelUnlocked = world.levelUnlocked;
+        w.allPlayersPassed = world.allPlayersPassed;
+        w.shouldChangeScreen = world.shouldChangeScreen;
+        w.totalPlayers = world.totalPlayers;
+        w.passedPlayers = world.passedPlayers;
+        w.changeReason = world.changeReason;
         return w;
     }
 
