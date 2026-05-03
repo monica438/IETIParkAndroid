@@ -224,7 +224,6 @@ public final class LevelRenderer {
         if (runtimeState != null && !runtimeState.visible) {
             return;
         }
-
         String texturePath = runtimeState == null || runtimeState.texturePath == null || runtimeState.texturePath.isEmpty()
             ? sprite.texturePath
             : runtimeState.texturePath;
@@ -239,15 +238,19 @@ public final class LevelRenderer {
         float worldY = runtimeState == null ? sprite.y : runtimeState.worldY;
         boolean flipX = runtimeState == null ? sprite.flipX : runtimeState.flipX;
         boolean flipY = runtimeState == null ? sprite.flipY : runtimeState.flipY;
-
         Texture texture = assets.get(texturePath, Texture.class);
         configureTexture(texture);
-
+        float leftDown = worldX - sprite.width * anchorX;
+        float topDown = worldY - sprite.height * anchorY;
+        float x = leftDown;
+        float y = worldHeight - topDown - sprite.height;
+        float originX = sprite.width * anchorX;
+        // anchorY is defined from top in y-down space; SpriteBatch origin is from bottom in y-up space.
+        float originY = sprite.height * (1f - anchorY);
         int frameWidth = runtimeState == null ? Math.max(1, Math.round(sprite.width)) : Math.max(1, runtimeState.frameWidth);
         int frameHeight = runtimeState == null ? Math.max(1, Math.round(sprite.height)) : Math.max(1, runtimeState.frameHeight);
         frameWidth = Math.min(frameWidth, texture.getWidth());
         frameHeight = Math.min(frameHeight, texture.getHeight());
-
         TextureRegion[][] regions = getSplitRegions(texturePath, texture, frameWidth, frameHeight);
         if (regions.length == 0 || regions[0].length == 0) {
             return;
@@ -262,24 +265,7 @@ public final class LevelRenderer {
         if (srcRow < 0 || srcRow >= rows || srcCol < 0 || srcCol >= cols) {
             return;
         }
-
         TextureRegion region = regions[srcRow][srcCol];
-
-        float drawWidth = runtimeState == null || runtimeState.drawWidth <= 0f
-            ? sprite.width
-            : runtimeState.drawWidth;
-
-        float drawHeight = runtimeState == null || runtimeState.drawHeight <= 0f
-            ? sprite.height
-            : runtimeState.drawHeight;
-
-        float leftDown = worldX - drawWidth * anchorX;
-        float topDown = worldY - drawHeight * anchorY;
-        float x = leftDown;
-        float y = worldHeight - topDown - drawHeight;
-        float originX = drawWidth * anchorX;
-        // anchorY is defined from top in y-down space; SpriteBatch origin is from bottom in y-up space.
-        float originY = drawHeight * (1f - anchorY);
 
         batch.draw(
             region,
@@ -287,8 +273,8 @@ public final class LevelRenderer {
             y,
             originX,
             originY,
-            drawWidth,
-            drawHeight,
+            sprite.width,
+            sprite.height,
             flipX ? -1f : 1f,
             flipY ? -1f : 1f,
             0f
@@ -345,8 +331,6 @@ public final class LevelRenderer {
         public boolean flipY;
         public int frameWidth;
         public int frameHeight;
-        public float drawWidth;
-        public float drawHeight;
         public String texturePath;
         public String animationId;
 
@@ -374,8 +358,6 @@ public final class LevelRenderer {
             this.flipY = flipY;
             this.frameWidth = frameWidth;
             this.frameHeight = frameHeight;
-            this.drawWidth = frameWidth;
-            this.drawHeight = frameHeight;
             this.texturePath = texturePath;
             this.animationId = animationId;
         }

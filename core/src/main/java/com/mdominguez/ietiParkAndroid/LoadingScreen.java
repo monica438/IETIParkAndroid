@@ -27,6 +27,7 @@ public class LoadingScreen extends ScreenAdapter {
 
     private final GameApp game;
     private final int levelIndex;
+    private final String nickname;
     private final Viewport viewport = new FitViewport(WORLD_WIDTH, WORLD_HEIGHT);
     private final GlyphLayout layout = new GlyphLayout();
 
@@ -34,8 +35,13 @@ public class LoadingScreen extends ScreenAdapter {
     private float visualProgress = 0f;
 
     public LoadingScreen(GameApp game, int levelIndex) {
+        this(game, levelIndex, GameSession.get().getRequestedNickname());
+    }
+
+    public LoadingScreen(GameApp game, int levelIndex, String nickname) {
         this.game = game;
         this.levelIndex = levelIndex;
+        this.nickname = GameSession.sanitizeNickname(nickname);
     }
 
     @Override
@@ -56,7 +62,7 @@ public class LoadingScreen extends ScreenAdapter {
         visualProgress = Math.min(targetProgress, visualProgress + Math.max(0f, delta) * VISUAL_PROGRESS_SPEED);
 
         if (done && elapsedSeconds >= MIN_SECONDS_ON_SCREEN && visualProgress >= 0.999f) {
-            game.setScreen(new PlayScreen(game, levelIndex));
+            game.setScreen(new PlayScreen(game, levelIndex, nickname));
             return;
         }
 
