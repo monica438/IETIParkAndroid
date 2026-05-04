@@ -32,8 +32,10 @@ public class PlayScreen extends ScreenAdapter {
     private static final float FIXED_STEP_SECONDS = 1f / 30f;
     private static final int PLAYER_SLOTS = 8;
     private static final float TOUCH_CONTROL_MARGIN = 30f;
+    private static final float TOUCH_CONTROL_VERTICAL_LIFT = 42f;
+    private static final float HUD_TOP_SAFE_OFFSET = 52f;
     private static final float JOYSTICK_BASE_RADIUS = 110f;
-    private static final float JOYSTICK_KNOB_RADIUS = 50f;
+    private static final float JOYSTICK_KNOB_RADIUS = 42f;
     private static final float JOYSTICK_CAPTURE_RADIUS = 170f;
     private static final float ACTION_BUTTON_RADIUS = 85f;
     private static final float TOUCH_AXIS_DEAD_ZONE = 0.18f;
@@ -576,7 +578,7 @@ public class PlayScreen extends ScreenAdapter {
 
         // En escritorio no enseñamos el botón táctil, así que tampoco escribimos JUMP.
         if (shouldShowTouchControls()) {
-            font.getData().setScale(1.6f);
+            font.getData().setScale(1.65f);
             font.setColor(Color.BLACK);
             layout.setText(font, "JUMP");
             font.draw(batch, layout, actionButtonCenter.x - layout.width * 0.5f, actionButtonCenter.y + layout.height * 0.5f);
@@ -584,11 +586,11 @@ public class PlayScreen extends ScreenAdapter {
 
         // Nick arriba a la derecha para no pisar el botón de menú.
         String playerText = GameSession.get().getMyNickname() + " (" + GameSession.get().getMyCatColor() + ")";
-        font.getData().setScale(1.6f);
+        font.getData().setScale(1.15f);
         font.setColor(Color.BLACK);
         layout.setText(font, playerText);
-        font.draw(batch, layout, hudViewport.getWorldWidth() - layout.width - 18f, hudViewport.getWorldHeight() - 18f);
-        font.getData().setScale(1.6f); font.setColor(Color.WHITE);
+        font.draw(batch, layout, hudViewport.getWorldWidth() - layout.width - 18f, hudViewport.getWorldHeight() - HUD_TOP_SAFE_OFFSET);
+        font.getData().setScale(1f); font.setColor(Color.WHITE);
         batch.end();
     }
 
@@ -743,12 +745,13 @@ public class PlayScreen extends ScreenAdapter {
     }
 
     private void updateTouchControlLayout() {
-        float w = hudViewport.getWorldWidth(), h = hudViewport.getWorldHeight();
-        joystickCenter.set(TOUCH_CONTROL_MARGIN + JOYSTICK_BASE_RADIUS, TOUCH_CONTROL_MARGIN + JOYSTICK_BASE_RADIUS);
-        actionButtonCenter.set(w - TOUCH_CONTROL_MARGIN - ACTION_BUTTON_RADIUS, TOUCH_CONTROL_MARGIN + ACTION_BUTTON_RADIUS);
+        float w = hudViewport.getWorldWidth();
+        float yOffset = TOUCH_CONTROL_MARGIN + TOUCH_CONTROL_VERTICAL_LIFT;
+        joystickCenter.set(TOUCH_CONTROL_MARGIN + JOYSTICK_BASE_RADIUS, yOffset + JOYSTICK_BASE_RADIUS);
+        actionButtonCenter.set(w - TOUCH_CONTROL_MARGIN - ACTION_BUTTON_RADIUS, yOffset + ACTION_BUTTON_RADIUS);
     }
 
-    private void updateBackButtonBounds() { backButton.set(14, hudViewport.getWorldHeight() - 56, 140, 44); }
+    private void updateBackButtonBounds() { backButton.set(14, hudViewport.getWorldHeight() - HUD_TOP_SAFE_OFFSET - 38f, 160, 48); }
     private boolean shouldShowTouchControls() { return isAndroidRuntime() || Gdx.input.isPeripheralAvailable(Input.Peripheral.MultitouchScreen); }
     private boolean isAndroidRuntime() { return Gdx.app.getType() == Application.ApplicationType.Android; }
     private boolean isPointerStillActive(int pointer) { return pointer >= 0 && pointer < MAX_TOUCH_POINTS && Gdx.input.isTouched(pointer); }
