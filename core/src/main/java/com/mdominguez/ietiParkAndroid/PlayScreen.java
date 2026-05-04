@@ -32,10 +32,10 @@ public class PlayScreen extends ScreenAdapter {
     private static final float FIXED_STEP_SECONDS = 1f / 30f;
     private static final int PLAYER_SLOTS = 8;
     private static final float TOUCH_CONTROL_MARGIN = 30f;
-    private static final float JOYSTICK_BASE_RADIUS = 78f;
-    private static final float JOYSTICK_KNOB_RADIUS = 30f;
-    private static final float JOYSTICK_CAPTURE_RADIUS = 126f;
-    private static final float ACTION_BUTTON_RADIUS = 58f;
+    private static final float JOYSTICK_BASE_RADIUS = 110f;
+    private static final float JOYSTICK_KNOB_RADIUS = 50f;
+    private static final float JOYSTICK_CAPTURE_RADIUS = 170f;
+    private static final float ACTION_BUTTON_RADIUS = 85f;
     private static final float TOUCH_AXIS_DEAD_ZONE = 0.18f;
     private static final int MAX_TOUCH_POINTS = 20;
     private static final float PLAYER_DRAW_SIZE = 32f;
@@ -560,7 +560,7 @@ public class PlayScreen extends ScreenAdapter {
             shapes.begin(ShapeRenderer.ShapeType.Filled);
             shapes.setColor(PANEL); shapes.circle(joystickCenter.x, joystickCenter.y, JOYSTICK_BASE_RADIUS, 48);
             shapes.setColor(ACCENT); shapes.circle(joystickCenter.x + joystickKnobOffset.x, joystickCenter.y + joystickKnobOffset.y, JOYSTICK_KNOB_RADIUS, 32);
-            shapes.setColor(PANEL); shapes.circle(actionButtonCenter.x, actionButtonCenter.y, ACTION_BUTTON_RADIUS, 48);
+            shapes.setColor(ACCENT); shapes.circle(actionButtonCenter.x, actionButtonCenter.y, ACTION_BUTTON_RADIUS, 48);
             shapes.end();
             shapes.begin(ShapeRenderer.ShapeType.Line);
             shapes.setColor(STROKE); shapes.circle(joystickCenter.x, joystickCenter.y, JOYSTICK_BASE_RADIUS, 48); shapes.circle(actionButtonCenter.x, actionButtonCenter.y, ACTION_BUTTON_RADIUS, 48);
@@ -576,7 +576,7 @@ public class PlayScreen extends ScreenAdapter {
 
         // En escritorio no enseñamos el botón táctil, así que tampoco escribimos JUMP.
         if (shouldShowTouchControls()) {
-            font.getData().setScale(1.05f);
+            font.getData().setScale(1.6f);
             font.setColor(Color.BLACK);
             layout.setText(font, "JUMP");
             font.draw(batch, layout, actionButtonCenter.x - layout.width * 0.5f, actionButtonCenter.y + layout.height * 0.5f);
@@ -584,11 +584,11 @@ public class PlayScreen extends ScreenAdapter {
 
         // Nick arriba a la derecha para no pisar el botón de menú.
         String playerText = GameSession.get().getMyNickname() + " (" + GameSession.get().getMyCatColor() + ")";
-        font.getData().setScale(1.15f);
+        font.getData().setScale(1.6f);
         font.setColor(Color.BLACK);
         layout.setText(font, playerText);
         font.draw(batch, layout, hudViewport.getWorldWidth() - layout.width - 18f, hudViewport.getWorldHeight() - 18f);
-        font.getData().setScale(1f); font.setColor(Color.WHITE);
+        font.getData().setScale(1.6f); font.setColor(Color.WHITE);
         batch.end();
     }
 
