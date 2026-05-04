@@ -133,6 +133,12 @@ public class PlayScreen extends ScreenAdapter {
             GameSession.get().sendInput(inputState.moveX, inputState.jumpPressed, inputState.jumpHeld);
         }
 
+        GameSession.WorldState latestWorld = GameSession.get().snapshotWorld();
+        if (latestWorld != null && latestWorld.levelIndex != levelIndex) {
+            game.setScreen(new LoadingScreen(game, latestWorld.levelIndex, nickname));
+            return;
+        }
+
         applyNetworkState(delta);
         updateCamera();
         viewport.apply();
@@ -143,6 +149,7 @@ public class PlayScreen extends ScreenAdapter {
         levelRenderer.render(levelData, game.getAssetManager(), batch, camera, spriteRuntimeStates, layerVisibilityStates, layerRuntimeStates);
         drawPotionOverCarrier(batch);
         batch.end();
+        renderLevel2PlatformOverlay(latestWorld);
         renderHud();
     }
 
@@ -189,9 +196,20 @@ public class PlayScreen extends ScreenAdapter {
                 if (potionOnFloor) {
                     state.worldX = world.potionX;
                     state.worldY = world.potionY;
-                    // La poción usa frames de 45x45. No hay que aplicarle la escala de gato.
-                    applyWorldAnimation(i, "potion_red", Gdx.graphics.getDeltaTime(), POTION_FLOOR_SIZE, POTION_FLOOR_SIZE);
+                    if (world.levelIndex == 1) {
+                        applyWorldAnimationById(i, sprite.animationId, Gdx.graphics.getDeltaTime(), sprite.width, sprite.height);
+                    } else {
+                        // La poción roja del nivel 0 usa frames de 45x45 pero se dibuja pequeña en el mundo.
+                        applyWorldAnimation(i, "potion_red", Gdx.graphics.getDeltaTime(), POTION_FLOOR_SIZE, POTION_FLOOR_SIZE);
+                    }
                 }
+            }
+
+            if (type.contains("button")) {
+                state.visible = world.levelIndex == 1;
+                state.worldX = world.buttonX;
+                state.worldY = world.buttonY;
+                applyWorldAnimationById(i, sprite.animationId, Gdx.graphics.getDeltaTime(), sprite.width, sprite.height);
             }
 
             if (type.contains("tree")) {
@@ -327,6 +345,46 @@ public class PlayScreen extends ScreenAdapter {
         state.frameIndex = start + ((int)(elapsed * Math.max(1f, clip.fps)) % span);
     }
 
+
+    private void applyWorldAnimationById(int spriteIndex, String animationId, float dt, float drawWidth, float drawHeight) {
+        if (animationId == null || spriteIndex < 0 || spriteIndex >= spriteRuntimeStates.size) return;
+        LevelData.AnimationClip clip = levelData.animationClips.get(animationId);
+        if (clip == null) return;
+
+        LevelRenderer.SpriteRuntimeState state = spriteRuntimeStates.get(spriteIndex);
+        state.animationId = animationId;
+        state.texturePath = clip.texturePath;
+        state.frameWidth = clip.frameWidth;
+        state.frameHeight = clip.frameHeight;
+        state.drawWidth = drawWidth;
+        state.drawHeight = drawHeight;
+        state.anchorX = clip.anchorX;
+        state.anchorY = clip.anchorY;
+
+        float elapsed = animationElapsed.get(spriteIndex) + dt;
+        animationElapsed.set(spriteIndex, elapsed);
+        int total = totalFrames(state.texturePath, state.frameWidth, state.frameHeight);
+        int start = Math.max(0, Math.min(total - 1, clip.startFrame));
+        int end = Math.max(start, Math.min(total - 1, clip.endFrame));
+        int span = Math.max(1, end - start + 1);
+        state.frameIndex = start + ((int)(elapsed * Math.max(1f, clip.fps)) % span);
+    }
+
+    private void renderLevel2PlatformOverlay(GameSession.WorldState world) {
+        if (world == null || world.levelIndex != 1) return;
+        ShapeRenderer shapes = game.getShapeRenderer();
+        shapes.setProjectionMatrix(camera.combined);
+        float yUp = levelData.worldHeight - world.platformY - world.platformHeight;
+        shapes.begin(ShapeRenderer.ShapeType.Filled);
+        shapes.setColor(world.platformActive ? Color.valueOf("8A6BFFCC") : Color.valueOf("6B5E44CC"));
+        shapes.rect(world.platformX, yUp, world.platformWidth, world.platformHeight);
+        shapes.end();
+        shapes.begin(ShapeRenderer.ShapeType.Line);
+        shapes.setColor(Color.BLACK);
+        shapes.rect(world.platformX, yUp, world.platformWidth, world.platformHeight);
+        shapes.end();
+    }
+
     private int totalFrames(String path, int fw, int fh) {
         if (path == null || fw <= 0 || fh <= 0 || !game.getAssetManager().isLoaded(path, Texture.class)) return 1;
         Texture t = game.getAssetManager().get(path, Texture.class);
@@ -429,6 +487,15 @@ public class PlayScreen extends ScreenAdapter {
         Texture potionTexture = game.getAssetManager().get(texturePath, Texture.class);
         int frameW = 45;
         int frameH = 45;
+        for (int i = 0; i < levelData.sprites.size; i++) {
+            LevelData.LevelSprite s = levelData.sprites.get(i);
+            String type = normalize(s.type + " " + s.name);
+            if (type.contains("potion") && !type.contains("carried")) {
+                LevelData.AnimationClip clip = levelData.animationClips.get(s.animationId);
+                if (clip != null) { frameW = clip.frameWidth; frameH = clip.frameHeight; }
+                break;
+            }
+        }
         int cols = Math.max(1, potionTexture.getWidth() / frameW);
         int rows = Math.max(1, potionTexture.getHeight() / frameH);
         int total = Math.max(1, cols * rows);
